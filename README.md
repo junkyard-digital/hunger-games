@@ -19,3 +19,5 @@ If you are developing a production application, we recommend using TypeScript wi
 Sources:
 - https://www.w3schools.com/html/html5_geolocation.asp
 - https://w3c.github.io/geolocation/#geolocation_interface
+- https://www.npmjs.com/package/geolib
+- https://felt.com/blog/7-free-map-apis-compared-to-google-maps
