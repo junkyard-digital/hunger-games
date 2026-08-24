@@ -1,31 +1,38 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react';
+import { supabase } from './lib/supabaseClient';
+import './app.css';
+import Location from './components/Location';
 
-import './App.css'
 
-function getLocation() {
-  console.log("getLocation function called");
-  if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(success, error);
-  } else {
-    console.log("Geolocation is not supported by this browser.");
+
+function App() {
+  const [test, setTest] = useState([])
+
+  useEffect(() => {
+    getTest()
+  }, [])
+
+  async function getTest() {
+    const { data, error } = await supabase.from('test').select()
+
+    if (error) {
+      console.error(error)
+      return
+    }
+
+    setTest(data)
   }
-}
 
-function success(position) {
-  console.log("Latitude: " + position.coords.latitude + "Longitude: " + position.coords.longitude);
-}
-
-function error() {
-  alert("Sorry, no position available.");
-}
-
-
-export default function App() {
   return (
     <>
-      <h1>Hello World</h1>
-      <button onClick={getLocation}>Share My Location</button>
+    <Location></Location>
+    <p></p>
+    <ul>
+      {test.map((one_test) => (
+        <li key={one_test.id}>{one_test.id}</li>
+      ))}
+    </ul>
     </>
-  );
+  )
 }
-
+export default App
