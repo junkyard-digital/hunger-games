@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react'
-// import { supabase } from './lib/supabaseClient'
-// import './App.css' TODO: import without erro.
+import { useEffect, useState } from 'react';
+// import { supabase } from './lib/supabaseClient';
 
 function getLocation() {
   console.log("getLocation function called");

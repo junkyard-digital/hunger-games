@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from './lib/supabaseClient';
-import './app.css';
+import './styles.css';
 import Location from './components/Location';
+import Map from './components/Map';
 
 
 
@@ -26,12 +27,12 @@ function App() {
   return (
     <>
     <Location></Location>
-    <p></p>
-    <ul>
+    <Map></Map>
+    {/* <ul>
       {test.map((one_test) => (
         <li key={one_test.id}>{one_test.id}</li>
       ))}
-    </ul>
+    </ul> */}
     </>
   )
 }

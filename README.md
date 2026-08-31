@@ -21,3 +21,5 @@ Sources:
 - https://w3c.github.io/geolocation/#geolocation_interface
 - https://www.npmjs.com/package/geolib
 - https://felt.com/blog/7-free-map-apis-compared-to-google-maps
+- https://docs.mapbox.com/mapbox-gl-js/example/
+- https://supabase.com/blog/postgres-realtime-location-sharing-with-maplibre
