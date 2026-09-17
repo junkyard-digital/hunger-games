@@ -30,6 +30,7 @@ export function normalizeConfig(raw) {
       shrinkSeconds: 120,
       shrinkFactor: 0.6,
       minRadiusMeters: 30,
+      random: true,
       circles: [],
       ...raw.storm,
     },

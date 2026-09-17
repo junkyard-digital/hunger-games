@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import GameMap from '../components/GameMap';
@@ -7,7 +7,7 @@ import { useAction, useGamemakerSession } from '../lib/hooks';
 import { exportConfig, loadDefaultConfig, normalizeConfig } from '../lib/config';
 import { asBox, boxCoords, coveringCircle } from '../lib/geo';
 import { PRIZE_TYPES, randomChests } from '../lib/prizes';
-import { buildStormPlan } from '../lib/storm';
+import { buildStormPlan, randomSeed } from '../lib/storm';
 import { rpc } from '../lib/supabaseClient';
 
 const TABS = ['Basics', 'Area', 'Storm', 'Chests', 'Teams'];
@@ -20,7 +20,7 @@ export default function GmCreate() {
   const [tab, setTab] = useState('Basics');
   const [loadError, setLoadError] = useState(null);
   const [map, setMap] = useState(null);
-  const [preview, setPreview] = useState(null);
+  const [stormSeed, setStormSeed] = useState(randomSeed);
   const { busy, error, run } = useAction();
 
   useEffect(() => {
@@ -32,13 +32,16 @@ export default function GmCreate() {
 
   const update = (path, value) => setConfig((prev) => setIn(prev, path, value));
 
+  // Saving the seed means the game starts with exactly the storm shown in the preview.
   const create = () => run(async () => {
-    const game = await rpc('gm_create_game', { p_name: config.name, p_config: config });
+    const saved = { ...config, storm: { ...config.storm, seed: stormSeed } };
+    const game = await rpc('gm_create_game', { p_name: config.name, p_config: saved });
     navigate(`/gm/game/${game.id}`, { replace: true });
   });
 
+  const stormPlan = buildStormPlan(config.storm, config.playArea, stormSeed);
   const circles = tab === 'Storm'
-    ? (preview ?? []).slice(1).map((c, i) => ({ center: c.c, radius: c.r, color: CIRCLE_COLORS[i % CIRCLE_COLORS.length] }))
+    ? stormPlan.slice(1).map((c, i) => ({ center: c.c, radius: c.r, color: CIRCLE_COLORS[i % CIRCLE_COLORS.length] }))
     : [];
 
   return (
@@ -59,7 +62,9 @@ export default function GmCreate() {
         <div className="editor-body">
           {tab === 'Basics' && <BasicsTab config={config} update={update} setConfig={setConfig} />}
           {tab === 'Area' && <AreaTab config={config} update={update} map={map} />}
-          {tab === 'Storm' && <StormTab config={config} update={update} map={map} setPreview={setPreview} />}
+          {tab === 'Storm' && (
+            <StormTab config={config} update={update} map={map} plan={stormPlan} onReroll={() => setStormSeed(randomSeed())} />
+          )}
           {tab === 'Chests' && <ChestsTab config={config} update={update} map={map} />}
           {tab === 'Teams' && <TeamsTab config={config} update={update} />}
         </div>
@@ -128,7 +133,7 @@ function BasicsTab({ config, update, setConfig }) {
 
   return (
     <>
-      <label>Game name<input value={config.name} maxLength={60} onChange={(e) => update(['name'], e.target.value)} /></label>
+      <label>Game name<input id="game-name" name="gameName" value={config.name} maxLength={60} onChange={(e) => update(['name'], e.target.value)} /></label>
       <Toggle label="Show players-alive count" checked={r.showAliveCount} onChange={(v) => update(['rules', 'showAliveCount'], v)} />
       <Toggle label="Allow joining after start" checked={r.allowLateJoin} onChange={(v) => update(['rules', 'allowLateJoin'], v)} />
       <NumberField label="Storm kills after" value={r.stormDeathSeconds} min={1} suffix="sec" onChange={(v) => update(['rules', 'stormDeathSeconds'], v)} />
@@ -235,19 +240,10 @@ function AreaHandles({ map, playArea, onChange }) {
 
 // ───────────── Storm ─────────────
 
-function StormTab({ config, update, map, setPreview }) {
+function StormTab({ config, update, map, plan, onReroll }) {
   const s = config.storm;
   const full = coveringCircle(config.playArea);
-  const [rollCount, setRollCount] = useState(0);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const plan = useMemo(() => buildStormPlan(s, config.playArea), [s, config.playArea, rollCount]);
-
-  useEffect(() => {
-    setPreview(plan);
-    return () => setPreview(null);
-  }, [plan, setPreview]);
-
-  const reroll = () => setRollCount((n) => n + 1);
+  const random = s.random !== false;
 
   const addCircle = () => {
     const prevR = s.circles.length ? s.circles[s.circles.length - 1].radiusMeters : full.r;
@@ -267,15 +263,22 @@ function StormTab({ config, update, map, setPreview }) {
       <NumberField label="Smallest circle" value={s.minRadiusMeters} min={5} suffix="m radius" onChange={(v) => update(['storm', 'minRadiusMeters'], v)} />
 
       <h3>Circles</h3>
+      <Toggle label="Random circles" hint={random
+        ? 'Your circles come first, then random ones until the smallest size.'
+        : 'Only the circles you place are used, and the last one is the final circle.'}
+        checked={random} onChange={(v) => update(['storm', 'random'], v)} />
       <p className="muted small">
-        Place circles yourself, in order. After your circles run out, the rest are random, each one inside the one before it, until the smallest size.
-        Dashed outlines show one possible storm ({plan.length - 1} circles, about {Math.round(total / 60)} min until the final circle). Random circles are rolled again when the game starts.
+        Dashed outlines on the map show the storm: {plan.length - 1} {plan.length === 2 ? 'circle' : 'circles'}, about {Math.round(total / 60)} min until the final circle.
+        This is the exact storm the game will use.
       </p>
+      {!random && !s.circles.length && (
+        <p className="warn">Place at least one circle, or the storm will never close in.</p>
+      )}
       <ul className="pick-list">
         {s.circles.map((c, i) => (
           <li key={i} className="circle-row">
             <span className="dot" style={{ background: CIRCLE_COLORS[i % CIRCLE_COLORS.length] }} />
-            <span>#{i + 1}</span>
+            <span>{!random && i === s.circles.length - 1 ? 'Final' : `#${i + 1}`}</span>
             <input type="range" min={10} max={full.r} value={c.radiusMeters}
               onChange={(e) => update(['storm', 'circles', i, 'radiusMeters'], Number(e.target.value))} />
             <span className="small mono">{c.radiusMeters}m</span>
@@ -283,9 +286,9 @@ function StormTab({ config, update, map, setPreview }) {
           </li>
         ))}
       </ul>
-      <div className="button-row">
+      <div className="button-row center-row">
         <button className="btn" onClick={addCircle}>+ Circle at map center</button>
-        <button className="btn ghost" onClick={reroll}>Re-roll preview</button>
+        <button className="btn ghost" onClick={onReroll} disabled={!random}>Re-roll random circles</button>
       </div>
     </>
   );

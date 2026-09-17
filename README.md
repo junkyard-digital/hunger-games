@@ -73,7 +73,8 @@ This file holds the defaults the gamemaker starts from when creating a game. Any
     "shrinkSeconds": 120,
     "shrinkFactor": 0.6,              // each random circle's radius vs. the previous one
     "minRadiusMeters": 30,            // circles stop shrinking here; the gamemaker ends the game
-    "circles": [                      // optional hand-placed circles, used first; the rest are random
+    "random": true,                   // false = use only the circles below, last one is the final circle
+    "circles": [                      // hand-placed circles, used first, in order
       { "center": [lng, lat], "radiusMeters": 500, "holdSeconds": 300, "shrinkSeconds": 90 }
     ]
   },

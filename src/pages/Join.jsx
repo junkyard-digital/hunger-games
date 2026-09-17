@@ -91,14 +91,14 @@ export default function Join() {
           <>
             <h1>Rejoin</h1>
             <p className="muted">Enter the rejoin code shown on your other device (or ask a gamemaker).</p>
-            <input className="code-input" value={rejoinCode} onChange={(e) => setRejoinCode(e.target.value.toUpperCase())}
+            <input className="code-input" id="rejoin-code" name="rejoinCode" value={rejoinCode} onChange={(e) => setRejoinCode(e.target.value.toUpperCase())}
               placeholder="REJOIN CODE" maxLength={6} autoCapitalize="characters" />
             <button className="btn primary block" disabled={busy || rejoinCode.length < 6}>Rejoin</button>
           </>
         ) : (
           <>
             <h1>What's your name?</h1>
-            <input value={name} onChange={(e) => setName(e.target.value.slice(0, MAX_NAME))} placeholder="Name" maxLength={MAX_NAME}
+            <input id="player-name" name="playerName" value={name} onChange={(e) => setName(e.target.value.slice(0, MAX_NAME))} placeholder="Name" maxLength={MAX_NAME}
               autoFocus autoComplete="nickname" />
             <p className="muted small">{name.trim().length}/{MAX_NAME}</p>
             <button className="btn primary block" disabled={busy || !name.trim()}>{busy ? 'Joining…' : 'Join game'}</button>

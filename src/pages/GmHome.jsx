@@ -54,7 +54,7 @@ export default function GmHome() {
       }}>
         <h2>Join as co-gamemaker</h2>
         <p className="muted small">Another gamemaker can share their game's gamemaker invite code with you.</p>
-        <input value={invite} onChange={(e) => setInvite(e.target.value.toUpperCase())} placeholder="INVITE CODE" maxLength={8} />
+        <input id="gm-invite" name="inviteCode" value={invite} onChange={(e) => setInvite(e.target.value.toUpperCase())} placeholder="INVITE CODE" maxLength={8} />
         <button className="btn block" disabled={busy || invite.length < 8}>Join</button>
         <ErrorText error={error} />
       </form>

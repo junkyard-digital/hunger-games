@@ -53,7 +53,10 @@ function GameHeader({ data }) {
   const start = () => run(async () => {
     const assigned = Object.values(players).filter((p) => p.status === 'alive');
     if (assigned.some((p) => !p.team_id) && !window.confirm('Some players have no team. Start anyway?')) return;
-    await rpc('gm_start_game', { p_game: game.id, p_storm: buildStormPlan(game.config.storm, game.config.playArea) });
+    await rpc('gm_start_game', {
+      p_game: game.id,
+      p_storm: buildStormPlan(game.config.storm, game.config.playArea, game.config.storm?.seed),
+    });
   });
   const end = () => run(async () => {
     if (window.confirm('End the game for everyone?')) await rpc('gm_end_game', { p_game: game.id });
@@ -159,7 +162,7 @@ function PlayerSheet({ data, player, nowMs, onClose }) {
           setMessage('');
         });
       }}>
-        <input value={message} onChange={(e) => setMessage(e.target.value)} placeholder={`Message ${player.name}…`} maxLength={200} />
+        <input name="playerMessage" value={message} onChange={(e) => setMessage(e.target.value)} placeholder={`Message ${player.name}…`} maxLength={200} />
         <button className="btn" disabled={busy || !message.trim()}>Send</button>
       </form>
       <ErrorText error={error} />
@@ -372,8 +375,8 @@ function MessageForm({ data }) {
             .map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
       )}
-      <label>Title<input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={60} required /></label>
-      <label>Message<textarea value={body} onChange={(e) => setBody(e.target.value)} rows={3} maxLength={300} required /></label>
+      <label>Title<input id="message-title" name="title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={60} required /></label>
+      <label>Message<textarea id="message-body" name="body" value={body} onChange={(e) => setBody(e.target.value)} rows={3} maxLength={300} required /></label>
       <button className="btn primary block" disabled={busy || (target !== 'all' && !targetId)}>{sent ? '✓ Sent' : 'Send'}</button>
       <ErrorText error={error} />
     </form>

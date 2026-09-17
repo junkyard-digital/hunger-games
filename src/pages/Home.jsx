@@ -43,7 +43,7 @@ export default function Home() {
       <form className="card" onSubmit={(e) => { e.preventDefault(); if (code.trim()) navigate(`/join/${code.trim().toUpperCase()}`); }}>
         <h2>Join a game</h2>
         <input
-          className="code-input" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())}
+          className="code-input" id="game-code" name="gameCode" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())}
           placeholder="GAME CODE" maxLength={5} autoCapitalize="characters" autoComplete="off"
         />
         <button className="btn primary block" disabled={code.trim().length < 5}>Join</button>

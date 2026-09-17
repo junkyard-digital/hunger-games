@@ -1,11 +1,28 @@
 // Service worker: shows push notifications and focuses the app when one is tapped.
-// (No offline caching — the game needs a live connection anyway.)
+// Page loads fall back to a cached shell when offline; game data always needs the network.
 
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+const SHELL = 'hunger-games-shell-v1';
 
-// Chrome wants a fetch handler before it offers to install the app; requests just pass through.
-self.addEventListener('fetch', () => {});
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+  event.waitUntil(caches.open(SHELL).then((cache) => cache.add('/index.html')).catch(() => {}));
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    const names = await caches.keys();
+    await Promise.all(names.filter((n) => n !== SHELL).map((n) => caches.delete(n)));
+    await self.clients.claim();
+  })());
+});
+
+// Page loads go to the network; the cached shell is only a fallback when the phone is offline.
+// (Chrome also wants a real fetch handler before it offers to install the app.)
+self.addEventListener('fetch', (event) => {
+  if (event.request.mode !== 'navigate') return;
+  event.respondWith(fetch(event.request).catch(async () => (await caches.match('/index.html'))
+    ?? new Response('You are offline.', { status: 503, headers: { 'Content-Type': 'text/plain' } })));
+});
 
 function readPayload(event) {
   try {

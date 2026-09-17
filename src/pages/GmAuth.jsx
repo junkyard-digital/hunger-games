@@ -45,11 +45,11 @@ export default function GmAuth() {
           <p className="warn">This device is currently a player. Logging in as a gamemaker will sign that player out on this device (use their rejoin code to get back).</p>
         )}
         <label>Username
-          <input value={username} onChange={(e) => setUsername(e.target.value)} autoCapitalize="none" autoComplete="username" required />
+          <input id="gm-username" name="username" value={username} onChange={(e) => setUsername(e.target.value)} autoCapitalize="none" autoComplete="username" required />
         </label>
         <label>Password
           <span className="password-field">
-            <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
+            <input id="gm-password" name="password" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={8} required />
             <button type="button" className="eye-btn" onClick={() => setShowPassword(!showPassword)}
               aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword}>
@@ -59,7 +59,7 @@ export default function GmAuth() {
         </label>
         {mode === 'signup' && (
           <label>Signup code <span className="muted small">(only if your server requires one)</span>
-            <input value={signupCode} onChange={(e) => setSignupCode(e.target.value)} autoCapitalize="none" />
+            <input id="gm-signup-code" name="signupCode" value={signupCode} onChange={(e) => setSignupCode(e.target.value)} autoCapitalize="none" />
           </label>
         )}
         <button className="btn primary block" disabled={busy}>{busy ? '…' : mode === 'login' ? 'Log in' : 'Create account'}</button>

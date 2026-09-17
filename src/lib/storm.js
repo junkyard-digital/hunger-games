@@ -2,25 +2,33 @@ import * as turf from '@turf/turf';
 import { coveringCircle, distanceM, pointInPolygon } from './geo';
 
 /**
- * Builds the full storm plan when a game starts. Gamemaker-placed circles come first; after those,
- * circles are rolled randomly (each one inside the previous) until minRadiusMeters is reached.
+ * Builds the full storm plan. Gamemaker-placed circles come first, in order. After those, if
+ * `storm.random` isn't false, circles are rolled randomly (each inside the previous) until
+ * minRadiusMeters; otherwise the last placed circle is the final one.
+ *
+ * The same `seed` always produces the same random circles, so the preview in the editor stays put
+ * until the gamemaker asks for a re-roll, and the game starts with the plan they were shown.
+ *
  * Output format is shared with the database (private.storm_at):
  *   [{ c: [lng, lat], r, revealAt, shrinkStart, shrinkEnd }]  — times in seconds since the game started.
  */
-export function buildStormPlan(storm, playArea) {
+export function buildStormPlan(storm, playArea, seed = randomSeed()) {
+  const random = mulberry32(seed);
   const first = coveringCircle(playArea);
   const plan = [{ ...first, revealAt: 0, shrinkStart: 0, shrinkEnd: 0 }];
   const factor = clamp(storm.shrinkFactor ?? 0.6, 0.1, 0.95);
   const minR = Math.max(storm.minRadiusMeters ?? 30, 5);
   const manual = storm.circles ?? [];
+  const useRandom = storm.random !== false;
 
   let shrinkStart = (storm.firstShrinkAfterMinutes ?? 10) * 60;
   for (let i = 0; plan[plan.length - 1].r > minR && i < 50; i++) {
+    const spec = manual[i];
+    if (!spec && !useRandom) break; // gamemaker-placed circles only
     const prev = plan[plan.length - 1];
-    const spec = manual[i] ?? {};
-    const r = Math.max(minR, Math.min(spec.radiusMeters ?? prev.r * factor, prev.r));
-    const c = spec.center ?? randomCenterInside(prev, r, playArea);
-    const shrinkSeconds = spec.shrinkSeconds ?? storm.shrinkSeconds ?? 120;
+    const r = Math.max(spec ? 10 : minR, Math.min(spec?.radiusMeters ?? prev.r * factor, prev.r));
+    const c = spec?.center ?? randomCenterInside(prev, r, playArea, random);
+    const shrinkSeconds = spec?.shrinkSeconds ?? storm.shrinkSeconds ?? 120;
     plan.push({
       c,
       r: Math.round(r),
@@ -33,12 +41,25 @@ export function buildStormPlan(storm, playArea) {
   return plan;
 }
 
-function randomCenterInside(prev, r, playArea) {
+export const randomSeed = () => Math.floor(Math.random() * 2 ** 32);
+
+/** Small seeded generator, so a given seed always lays out the same circles. */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 2 ** 32;
+  };
+}
+
+function randomCenterInside(prev, r, playArea, random) {
   const slack = Math.max(prev.r - r, 0);
   let best = prev.c;
   for (let i = 0; i < 60; i++) {
-    const d = slack * Math.sqrt(Math.random());
-    const c = turf.destination(prev.c, d / 1000, Math.random() * 360 - 180, { units: 'kilometers' }).geometry.coordinates;
+    const d = slack * Math.sqrt(random());
+    const c = turf.destination(prev.c, d / 1000, random() * 360 - 180, { units: 'kilometers' }).geometry.coordinates;
     best = c;
     if (pointInPolygon(c, playArea)) return c;
   }
