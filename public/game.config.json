@@ -1,0 +1,55 @@
+{
+  "name": "My game",
+  "playArea": {
+    "type": "Feature",
+    "properties": { "name": "WashU Danforth + South 40 + Delmar Loop" },
+    "geometry": {
+      "type": "Polygon",
+      "coordinates": [[
+        [-90.3175, 38.6420],
+        [-90.2975, 38.6420],
+        [-90.2975, 38.6580],
+        [-90.3175, 38.6580],
+        [-90.3175, 38.6420]
+      ]]
+    }
+  },
+  "rules": {
+    "maxNameLength": 16,
+    "showAliveCount": true,
+    "allowLateJoin": false,
+    "stormDeathSeconds": 10,
+    "darkAfterSeconds": 15,
+    "locationIntervalSeconds": 3,
+    "text": [
+      "My rules."
+    ]
+  },
+  "storm": {
+    "firstShrinkAfterMinutes": 10,
+    "revealBeforeShrinkSeconds": 120,
+    "holdSeconds": 240,
+    "shrinkSeconds": 120,
+    "shrinkFactor": 0.6,
+    "minRadiusMeters": 30,
+    "circles": []
+  },
+  "chests": {
+    "count": 6,
+    "claimRadiusMeters": 15,
+    "visibleToPlayers": true,
+    "items": [],
+    "prizePool": [
+      { "type": "reveal_enemy", "label": "Spy: see one enemy for 10s", "seconds": 10, "weight": 3 },
+      { "type": "reveal_all_enemies", "label": "Radar: see all enemies for 5s", "seconds": 5, "weight": 1 },
+      { "type": "storm_shield", "label": "Storm shield (60s)", "seconds": 60, "weight": 2 },
+      { "type": "custom", "label": "Extra heart (show a gamemaker)", "weight": 3 }
+    ]
+  },
+  "teams": [
+    { "name": "Red", "color": "#ef4444" },
+    { "name": "Blue", "color": "#3b82f6" },
+    { "name": "Green", "color": "#22c55e" },
+    { "name": "Yellow", "color": "#eab308" }
+  ]
+}

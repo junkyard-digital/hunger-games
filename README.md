@@ -1,25 +1,106 @@
-# React + Vite
+# Hunger Games 
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A real-life battle royale that runs in the phone browser. Players join with a name, their live location shows up on a map, and a Fortnite-style storm closes in until one team is left. Made for a campus game with laser tag gear, but you can set it up for any area.
 
-Currently, two official plugins are available:
+- **Players** don't need an account. They open a link, enter a name, and add the site to their Home Screen. Their phone remembers them.
+- **Gamemakers** log in with a username and password. They set up the play area, storm, and chests on a map, drag players into teams, see everyone live, and eliminate, revive, remove, or message players.
+- **The server enforces the rules:** a storm death after N seconds outside the circle, "went dark" alerts, out-of-bounds alerts, and chests going to the first player who reaches them.
+- Also included: a live event feed, push notifications, a spectator link, and full replay.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## How it works
 
-## React Compiler
+| Piece | Tech |
+| --- | --- |
+| App | React + Vite, installable to the Home Screen (manifest + service worker) |
+| Map | Mapbox GL JS + Turf |
+| Data, realtime, auth | Supabase (Postgres, Realtime, anonymous auth) |
+| Game rules | SQL functions + a `pg_cron` job that runs every second (`private.game_tick`) |
+| Push | `push` edge function (makes its own VAPID keys the first time it runs) |
+| Gamemaker signup | `gm-signup` edge function |
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Clients can only **read** tables, and row-level security controls what each person sees. Players only get the positions of their own team plus any enemies they've revealed. Every change goes through a `security definer` RPC that checks permissions.
 
-## Expanding the ESLint configuration
+### Limits of a website
+A website can only read GPS **while it's open on screen**. The app keeps the screen awake with the Wake Lock API and tells players to set Auto-Lock to Never. If a phone stops reporting for `darkAfterSeconds`, gamemakers and that player are alerted. Its last position still counts for storm damage, so locking your screen won't save you. On iPhone, push notifications need iOS 16.4+ and the site added to the Home Screen.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Setup
 
+1. **Supabase project:** create one at [supabase.com](https://supabase.com).
+   - Authentication → Sign In / Providers → turn on **Allow anonymous sign-ins**.
+   - Run the SQL files in `supabase/migrations/` in order, using the SQL editor or `supabase db push`.
+   - Deploy the functions **without JWT verification**, since they check requests themselves:
+     ```sh
+     supabase functions deploy push --no-verify-jwt
+     supabase functions deploy gm-signup --no-verify-jwt
+     ```
+   - Optional: `supabase secrets set GM_SIGNUP_CODE=something` so only people with the code can create gamemaker accounts.
+   - Optional: `supabase secrets set VAPID_SUBJECT=mailto:you@example.com`.
+   - Open `https://<project>.supabase.co/functions/v1/push` once in a browser. This creates the push keys and turns on notification delivery.
+2. **Mapbox:** make a public token at [account.mapbox.com](https://account.mapbox.com) and restrict it to your site's URL.
+3. **Env:** `cp .env.example .env` and fill it in.
+4. **Run:** `npm install && npm run dev`.
+5. **Deploy:** any static host with HTTPS works. GPS, Wake Lock, and push all require HTTPS. `vercel.json` and `public/_redirects` handle page routing on Vercel and Netlify.
 
-Sources:
-- https://www.w3schools.com/html/html5_geolocation.asp
-- https://w3c.github.io/geolocation/#geolocation_interface
-- https://www.npmjs.com/package/geolib
-- https://felt.com/blog/7-free-map-apis-compared-to-google-maps
-- https://docs.mapbox.com/mapbox-gl-js/example/
-- https://supabase.com/blog/postgres-realtime-location-sharing-with-maplibre
+To test on a phone before deploying, run `npx vite --host` behind an HTTPS tunnel (e.g. `cloudflared tunnel --url http://localhost:5173`). Plain `http://<your-ip>` won't get GPS.
+
+## Your own game: `public/game.config.json`
+
+This file holds the defaults the gamemaker starts from when creating a game. Anything in it can be changed in the creation screen, which can also load or download a config.
+
+```jsonc
+{
+  "name": "My game",
+  "playArea": { "type": "Feature", "geometry": { "type": "Polygon", "coordinates": [[[lng, lat], ...]] } },
+  "rules": {
+    "maxNameLength": 16,
+    "showAliveCount": true,        // the "ALIVE" counter in the corner
+    "allowLateJoin": false,
+    "stormDeathSeconds": 10,       // time outside the circle before automatic death
+    "darkAfterSeconds": 15,        // no location for this long → "went dark" alert
+    "locationIntervalSeconds": 3,
+    "text": ["Rules shown to players"]
+  },
+  "storm": {
+    "firstShrinkAfterMinutes": 10,
+    "revealBeforeShrinkSeconds": 120, // how early the next circle appears
+    "holdSeconds": 240,               // pause between shrinks
+    "shrinkSeconds": 120,
+    "shrinkFactor": 0.6,              // each random circle's radius vs. the previous one
+    "minRadiusMeters": 30,            // circles stop shrinking here; the gamemaker ends the game
+    "circles": [                      // optional hand-placed circles, used first; the rest are random
+      { "center": [lng, lat], "radiusMeters": 500, "holdSeconds": 300, "shrinkSeconds": 90 }
+    ]
+  },
+  "chests": {
+    "count": 6,
+    "claimRadiusMeters": 15,          // phone GPS is usually ±5–15 m
+    "visibleToPlayers": true,
+    "items": [{ "position": [lng, lat], "prize": { "type": "storm_shield", "label": "Shield", "seconds": 60 } }],
+    "prizePool": [{ "type": "reveal_enemy", "label": "Spy", "seconds": 10, "weight": 3 }]
+  },
+  "teams": [{ "name": "Red", "color": "#ef4444" }]
+}
+```
+
+`playArea` accepts a GeoJSON Feature, a FeatureCollection (the first Polygon is used), a Polygon geometry, or a bare coordinates array. Draw one at [geojson.io](https://geojson.io).
+
+### Prize types
+| type | effect |
+| --- | --- |
+| `reveal_enemy` | Pick one enemy and see them on your map for `seconds` |
+| `reveal_all_enemies` | See every enemy for `seconds` |
+| `storm_shield` | The storm can't hurt you for `seconds` |
+| `custom` | Anything else (e.g. "extra heart"). Gamemakers get notified when it's used, and you handle it in real life |
+
+To add a type, add a `when` branch in `public.use_item` (SQL) and an entry in `src/lib/prizes.js`.
+
+## Project layout
+```
+public/game.config.json      default game setup
+supabase/migrations/         schema, security, game rules, cron tick, push trigger
+supabase/functions/          push delivery, gamemaker signup
+src/lib/storm.js             storm plan + circle math (mirrors private.storm_at in SQL)
+src/lib/useGame.js           realtime game state hook
+src/lib/device.js            GPS reporting, wake lock, push subscription
+src/pages/                   Home, Join, Play, GmAuth, GmHome, GmCreate, GmGame, Watch, Replay
+```
