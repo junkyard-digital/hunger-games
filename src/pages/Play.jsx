@@ -4,7 +4,7 @@ import GameMap from '../components/GameMap';
 import { EventFeed, ErrorText, Loading, Modal, NotificationToasts, Toasts } from '../components/ui';
 import { useAction } from '../lib/hooks';
 import { aliveCount, useGame, useServerClock, useStorm, useTicker } from '../lib/useGame';
-import { isStandalone, useGeolocationPermission, useLocationReporter, usePushStatus, useWakeLock } from '../lib/device';
+import { isIOS, isStandalone, screenTimeoutHint, useGeolocationPermission, useLocationReporter, usePushStatus, useWakeLock } from '../lib/device';
 import { rpc, supabase } from '../lib/supabaseClient';
 import { distanceM, formatClock, formatDistance, nearestPointOnCircle } from '../lib/geo';
 import { prizeInfo } from '../lib/prizes';
@@ -110,7 +110,7 @@ export default function Play() {
       {myState?.out_of_bounds && alive && <div className="warn-banner">You're outside the play area</div>}
       {location.error && <div className="warn-banner">{location.error}</div>}
       {wake !== 'on' && game.status !== 'ended' && (
-        <div className="warn-banner subtle">Keep your screen on (Settings → Display → Auto-Lock → Never)</div>
+        <div className="warn-banner subtle">Keep your screen on ({screenTimeoutHint()})</div>
       )}
 
       {!alive && (
@@ -225,10 +225,10 @@ function Setup({ onDone }) {
             ? <span className="ok">✓</span>
             : <button className="btn primary" onClick={() => { askCompass(); requestGeo(); }}>Allow</button>}
         </div>
-        {geo === 'denied' && <p className="error">Location is blocked. Turn it on in Settings → Privacy → Location Services → Safari Websites (or this app).</p>}
+        {geo === 'denied' && <p className="error">Location is blocked. Turn it back on for this site in your browser settings, then reload.</p>}
 
         <div className="setup-step">
-          <div><strong>2. Notifications</strong><p className="muted small">Storm warnings and gamemaker messages, even when locked.{!isStandalone() && ' Requires adding to Home Screen on iPhone.'}</p></div>
+          <div><strong>2. Notifications</strong><p className="muted small">Storm warnings and gamemaker messages, even when locked.{isIOS() && !isStandalone() && ' On iPhone this needs the app added to your Home Screen.'}</p></div>
           {pushOn ? <span className="ok">✓</span> : <button className="btn" disabled={busy} onClick={() => run(enablePushNow)}>Enable</button>}
         </div>
         <ErrorText error={error} />
@@ -236,7 +236,7 @@ function Setup({ onDone }) {
         <div className="setup-step">
           <div>
             <strong>3. Screen stays on</strong>
-            <p className="muted small">Location only updates while the app is open. If your screen locks you "go dark" and the gamemakers are alerted. Set <em>Settings → Display &amp; Brightness → Auto-Lock → Never</em> for the game.</p>
+            <p className="muted small">Location only updates while the app is open. If your screen locks you "go dark" and the gamemakers are alerted. Set <em>{screenTimeoutHint()}</em> for the game.</p>
           </div>
         </div>
 

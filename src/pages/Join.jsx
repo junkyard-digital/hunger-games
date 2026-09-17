@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ensureAnonymousSession, getSession, isGamemakerSession, rpc, supabase } from '../lib/supabaseClient';
-import { isIOS, isStandalone } from '../lib/device';
+import { isIOS, isStandalone, useInstallPrompt } from '../lib/device';
 import { ErrorText, Loading } from '../components/ui';
 import { useAction } from '../lib/hooks';
 
@@ -17,6 +17,7 @@ export default function Join() {
   const [rejoin, setRejoin] = useState(false);
   const [rejoinCode, setRejoinCode] = useState('');
   const { busy, error, run } = useAction();
+  const [canInstall, install] = useInstallPrompt();
 
   useEffect(() => {
     (async () => {
@@ -50,20 +51,25 @@ export default function Join() {
     );
   }
 
-  // iPhone: identity, notifications, and wake lock work best from the Home Screen app, which has its own storage.
-  if (isIOS() && !isStandalone() && !skipInstall) {
+  // Installing keeps the player signed in, allows notifications, and keeps the screen awake.
+  // iPhone has no install API, so those players follow written steps instead.
+  if (!isStandalone() && !skipInstall && (isIOS() || canInstall)) {
     return (
       <main className="page narrow">
         <section className="card">
-          <h1>Add to Home Screen first</h1>
-          <p>So the game can remember you and send you alerts:</p>
-          <ol className="steps">
-            <li>Tap the <strong>Share</strong> button in Safari</li>
-            <li>Tap <strong>Add to Home Screen</strong></li>
-            <li>Open <strong>Hunger Games</strong> from your Home Screen</li>
-          </ol>
+          <h1>Install the game first</h1>
+          <p>So the game remembers you and can send you alerts:</p>
+          {canInstall ? (
+            <button className="btn primary block" onClick={install}>Add to Home Screen</button>
+          ) : (
+            <ol className="steps">
+              <li>Tap the <strong>Share</strong> button in Safari</li>
+              <li>Tap <strong>Add to Home Screen</strong></li>
+              <li>Open <strong>Hunger Games</strong> from your Home Screen</li>
+            </ol>
+          )}
           <p className="muted">Game code: <strong className="mono">{code.toUpperCase()}</strong></p>
-          <button className="btn ghost block" onClick={() => setSkipInstall(true)}>Continue in Safari anyway</button>
+          <button className="btn ghost block" onClick={() => setSkipInstall(true)}>Continue in the browser anyway</button>
         </section>
       </main>
     );

@@ -21,7 +21,11 @@ A real-life battle royale that runs in the phone browser. Players join with a na
 Clients can only **read** tables, and row-level security controls what each person sees. Players only get the positions of their own team plus any enemies they've revealed. Every change goes through a `security definer` RPC that checks permissions.
 
 ### Limits of a website
-A website can only read GPS **while it's open on screen**. The app keeps the screen awake with the Wake Lock API and tells players to set Auto-Lock to Never. If a phone stops reporting for `darkAfterSeconds`, gamemakers and that player are alerted. Its last position still counts for storm damage, so locking your screen won't save you. On iPhone, push notifications need iOS 16.4+ and the site added to the Home Screen.
+A website can only read GPS **while it's open on screen**, on both iPhone and Android. The app keeps the screen awake with the Wake Lock API and tells players to turn their screen timeout off. If a phone stops reporting for `darkAfterSeconds`, gamemakers and that player are alerted. Its last position still counts for storm damage, so locking your screen won't save you.
+
+**iPhone (Safari, iOS 16.4+):** players must add the site to the Home Screen and open it from there. Safari and the Home Screen app keep separate storage, so a player who joins in Safari first is a different player in the installed app. The rejoin code moves them across. Push notifications only work from the Home Screen app.
+
+**Android (Chrome):** Chrome offers a one-tap "Add to Home Screen" button, which the join page shows automatically. Installing is optional there, because Chrome and the installed app share storage and notifications work in a normal tab too.
 
 ## Setup
 
@@ -40,6 +44,8 @@ A website can only read GPS **while it's open on screen**. The app keeps the scr
 3. **Env:** `cp .env.example .env` and fill it in.
 4. **Run:** `npm install && npm run dev`.
 5. **Deploy:** any static host with HTTPS works. GPS, Wake Lock, and push all require HTTPS. `vercel.json` and `public/_redirects` handle page routing on Vercel and Netlify.
+   - Set the same three `VITE_` variables in your host's environment settings. `.env` is gitignored, so without them the build has no Supabase or Mapbox credentials and the app shows a "Missing configuration" screen.
+   - On Vercel, share the **production** domain. Preview URLs (`…-<hash>-<team>.vercel.app`) sit behind Vercel Authentication and redirect anyone who isn't logged into your Vercel account. To open previews to players, turn off Project Settings → Deployment Protection.
 
 To test on a phone before deploying, run `npx vite --host` behind an HTTPS tunnel (e.g. `cloudflared tunnel --url http://localhost:5173`). Plain `http://<your-ip>` won't get GPS.
 

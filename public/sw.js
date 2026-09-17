@@ -4,13 +4,19 @@
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 
-self.addEventListener('push', (event) => {
-  let data = {};
+// Chrome wants a fetch handler before it offers to install the app; requests just pass through.
+self.addEventListener('fetch', () => {});
+
+function readPayload(event) {
   try {
-    data = event.data?.json() ?? {};
+    return event.data?.json() ?? {};
   } catch {
-    data = { title: 'Hunger Games', body: event.data?.text() };
+    return { title: 'Hunger Games', body: event.data?.text() };
   }
+}
+
+self.addEventListener('push', (event) => {
+  const data = readPayload(event);
   event.waitUntil(self.registration.showNotification(data.title ?? 'Hunger Games', {
     body: data.body,
     tag: data.kind === 'storm' ? 'storm' : undefined,

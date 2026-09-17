@@ -7,6 +7,46 @@ export const isStandalone = () =>
 export const isIOS = () =>
   /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
+export const isAndroid = () => /Android/.test(navigator.userAgent);
+
+/** Where to find the screen-timeout setting, per platform. */
+export const screenTimeoutHint = () => (isIOS()
+  ? 'Settings → Display & Brightness → Auto-Lock → Never'
+  : isAndroid()
+    ? 'Settings → Display → Screen timeout → longest option'
+    : 'your phone\'s screen timeout setting');
+
+/**
+ * Chrome (Android, desktop) fires beforeinstallprompt, so installing is one tap.
+ * Safari has no such API, so iPhone users get written steps instead.
+ */
+export function useInstallPrompt() {
+  const [prompt, setPrompt] = useState(null);
+  useEffect(() => {
+    const onPrompt = (e) => {
+      e.preventDefault();
+      setPrompt(() => e);
+    };
+    window.addEventListener('beforeinstallprompt', onPrompt);
+    const onInstalled = () => setPrompt(null);
+    window.addEventListener('appinstalled', onInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onPrompt);
+      window.removeEventListener('appinstalled', onInstalled);
+    };
+  }, []);
+
+  const install = useCallback(async () => {
+    if (!prompt) return false;
+    prompt.prompt();
+    const { outcome } = await prompt.userChoice;
+    if (outcome === 'accepted') setPrompt(null);
+    return outcome === 'accepted';
+  }, [prompt]);
+
+  return [!!prompt, install];
+}
+
 /**
  * Keeps the screen awake (Screen Wake Lock API). The lock is dropped by the OS whenever the page is hidden,
  * so it is re-requested each time the app comes back to the foreground.
@@ -77,7 +117,7 @@ export function useLocationReporter({ gameId, enabled, intervalSec = 3, onClaime
           setPosition(fix);
           setError(null);
         },
-        (err) => setError(err.code === 1 ? 'Location permission denied. Enable it in Settings → Privacy → Location Services.' : err.message),
+        (err) => setError(err.code === 1 ? 'Location permission is off. Turn it back on for this site in your browser settings.' : err.message),
         { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 },
       );
     };
