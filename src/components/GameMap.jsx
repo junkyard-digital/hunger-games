@@ -126,8 +126,14 @@ export default function GameMap({ playArea, storm, players, chests, me, circles,
     if (!ready) return;
     const map = mapRef.current;
     for (const layer of map.getStyle().layers) {
-      const hasText = layer.layout?.['text-field'] !== undefined || map.getLayoutProperty(layer.id, 'text-field') !== undefined;
-      if (layer.type === 'symbol' && hasText) map.setLayoutProperty(layer.id, 'visibility', hideLabels ? 'none' : 'visible');
+      // Only text-drawing symbol layers. Asking any other layer about 'text-field' throws, and a
+      // throw here would take the whole screen down, so this stays defensive.
+      if (layer.type !== 'symbol' || layer.layout?.['text-field'] === undefined) continue;
+      try {
+        map.setLayoutProperty(layer.id, 'visibility', hideLabels ? 'none' : 'visible');
+      } catch {
+        // a layer that won't take a visibility change is not worth breaking the game over
+      }
     }
   }, [ready, hideLabels]);
 
