@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { getSession, supabase } from '../lib/supabaseClient';
+import { restoreSession, supabase } from '../lib/supabaseClient';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -9,7 +9,7 @@ export default function Home() {
 
   useEffect(() => {
     (async () => {
-      const session = await getSession();
+      const session = await restoreSession();
       if (!session?.user.is_anonymous) return;
       const { data } = await supabase.from('players')
         .select('id, name, status, games(id, name, code, status)')

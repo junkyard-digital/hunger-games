@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ensureAnonymousSession, getSession, isGamemakerSession, rpc, supabase } from '../lib/supabaseClient';
+import { ensureAnonymousSession, isGamemakerSession, restoreSession, rpc, supabase } from '../lib/supabaseClient';
+import { recallPlayer, rememberPlayer } from '../lib/identity';
 import { isIOS, isStandalone, useInstallPrompt } from '../lib/device';
 import { ErrorText, Loading } from '../components/ui';
 import { useAction } from '../lib/hooks';
@@ -21,7 +22,7 @@ export default function Join() {
 
   useEffect(() => {
     (async () => {
-      const session = await getSession();
+      const session = await restoreSession();
       if (isGamemakerSession(session)) {
         setGmWarning(true);
         setChecking(false);
@@ -31,6 +32,18 @@ export default function Join() {
         const { data } = await supabase.from('players').select('game_id, games!inner(code)')
           .eq('user_id', session.user.id).eq('games.code', code.toUpperCase()).maybeSingle();
         if (data) return navigate(`/play/${data.game_id}`, { replace: true });
+      }
+      // Session gone but this phone has played before: take their place back without asking.
+      const saved = recallPlayer({ code });
+      if (saved) {
+        try {
+          await ensureAnonymousSession();
+          const player = await rpc('rejoin_game', { p_code: saved.code, p_rejoin_code: saved.rejoinCode });
+          rememberPlayer(player.game_id, saved.code, saved.rejoinCode);
+          return navigate(`/play/${player.game_id}`, { replace: true });
+        } catch {
+          // the saved code no longer works; fall through to the normal join form
+        }
       }
       setChecking(false);
     })();
@@ -80,6 +93,8 @@ export default function Join() {
     const player = rejoin
       ? await rpc('rejoin_game', { p_code: code, p_rejoin_code: rejoinCode })
       : await rpc('join_game', { p_code: code, p_name: name });
+    const { data: secret } = await supabase.from('player_secrets').select('rejoin_code').eq('player_id', player.id).maybeSingle();
+    if (secret) rememberPlayer(player.game_id, code.toUpperCase(), secret.rejoin_code);
     navigate(`/play/${player.game_id}`, { replace: true });
   });
 

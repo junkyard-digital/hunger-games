@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { functionsUrl, getSession, GM_EMAIL_DOMAIN, isGamemakerSession, supabase } from '../lib/supabaseClient';
+import { functionsUrl, GM_EMAIL_DOMAIN, isGamemakerSession, restoreSession, supabase } from '../lib/supabaseClient';
 import { ErrorText } from '../components/ui';
 import { useAction } from '../lib/hooks';
 
@@ -15,7 +15,7 @@ export default function GmAuth() {
   const { busy, error, run } = useAction();
 
   useEffect(() => {
-    getSession().then((s) => {
+    restoreSession().then((s) => {
       if (isGamemakerSession(s)) navigate('/gm', { replace: true });
       else if (s) setAnonWarning(true);
     });

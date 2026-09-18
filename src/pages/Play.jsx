@@ -5,7 +5,9 @@ import { EventFeed, ErrorText, Loading, Modal, NotificationToasts, Toasts } from
 import { useAction } from '../lib/hooks';
 import { aliveCount, useGame, useServerClock, useStorm, useTicker } from '../lib/useGame';
 import { isIOS, isStandalone, screenTimeoutHint, useGeolocationPermission, useLocationReporter, usePushStatus, useWakeLock } from '../lib/device';
-import { rpc, supabase } from '../lib/supabaseClient';
+import { ensureAnonymousSession, restoreSession, rpc, supabase } from '../lib/supabaseClient';
+import { recallPlayer, rememberPlayer } from '../lib/identity';
+import { getCookie, setCookie } from '../lib/supabaseClient';
 import { distanceM, formatClock, formatDistance, nearestPointOnCircle } from '../lib/geo';
 import { prizeInfo } from '../lib/prizes';
 
@@ -13,7 +15,7 @@ export default function Play() {
   const { gameId } = useParams();
   const [userId, setUserId] = useState(null);
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setUserId(data.session?.user.id ?? null));
+    restoreSession().then((session) => setUserId(session?.user.id ?? null));
   }, []);
 
   const data = useGame(gameId);
@@ -23,7 +25,14 @@ export default function Play() {
   const me = useMemo(() => Object.values(players).find((p) => p.user_id === userId), [players, userId]);
   const storm = useStorm(game, nowMs);
 
-  const [setupDone, setSetupDone] = useState(() => localStorage.getItem('hg:setup') === '1');
+  // Mirrored to a cookie so a phone that clears localStorage doesn't make players redo this.
+  const [setupDone, setSetupDone] = useState(() => {
+    try {
+      return localStorage.getItem('hg:setup') === '1' || getCookie('hg_setup') === '1';
+    } catch {
+      return getCookie('hg_setup') === '1';
+    }
+  });
   const [showBag, setShowBag] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [localToasts, setLocalToasts] = useState([]);
@@ -41,10 +50,20 @@ export default function Play() {
   const location = useLocationReporter({ gameId, enabled: reporting, intervalSec, onClaimed });
   const wake = useWakeLock(reporting);
 
+  if (!loaded && !error) return <Loading />;
+  if (!me) return <ReclaimSeat gameId={gameId} error={error} />;
   if (error) return <main className="page narrow"><div className="card"><ErrorText error={error} /><Link to="/">Home</Link></div></main>;
-  if (!loaded || !userId) return <Loading />;
-  if (!me) return <main className="page narrow"><div className="card"><p>You're not in this game on this device.</p><Link className="btn block" to={`/join/${game.code}`}>Join or rejoin</Link></div></main>;
-  if (!setupDone) return <Setup onDone={() => { localStorage.setItem('hg:setup', '1'); setSetupDone(true); }} />;
+  if (!setupDone) {
+    return <Setup onDone={() => {
+      try {
+        localStorage.setItem('hg:setup', '1');
+      } catch {
+        // storage blocked; the cookie below is enough
+      }
+      setCookie('hg_setup', '1');
+      setSetupDone(true);
+    }} />;
+  }
 
   const myTeam = me.team_id ? teams[me.team_id] : null;
   const teammates = Object.values(players).filter((p) => p.id !== me.id && me.team_id && p.team_id === me.team_id);
@@ -319,5 +338,44 @@ function Info({ game, me, onClose, wake, lastSent }) {
       <ErrorText error={error} />
       <p className="muted small">Use the rejoin code if you switch phones or browsers.</p>
     </Modal>
+  );
+}
+
+/**
+ * Shown when this device has no player in the game — usually because the phone dropped its session.
+ * If we saved a rejoin code here before, it is used automatically and the player never notices.
+ */
+function ReclaimSeat({ gameId, error }) {
+  const saved = useMemo(() => recallPlayer({ gameId }), [gameId]);
+  const [failed, setFailed] = useState(!saved);
+
+  useEffect(() => {
+    if (!saved) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const session = await ensureAnonymousSession();
+        const player = await rpc('rejoin_game', { p_code: saved.code, p_rejoin_code: saved.rejoinCode });
+        rememberPlayer(player.game_id, saved.code, saved.rejoinCode);
+        // Reload so the game data is fetched again as the restored player.
+        if (!cancelled && session) window.location.reload();
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [saved]);
+
+  if (!failed) return <Loading label="Getting you back into the game…" />;
+  return (
+    <main className="page narrow">
+      <div className="card">
+        <p>This device isn't in the game any more.</p>
+        <ErrorText error={error} />
+        <Link className="btn block" to="/">Enter the game code again</Link>
+      </div>
+    </main>
   );
 }

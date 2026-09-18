@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getSession, isGamemakerSession } from './supabaseClient';
+import { isGamemakerSession, restoreSession } from './supabaseClient';
 
 /** Wraps an async action with busy + error state. */
 export function useAction() {
@@ -25,7 +25,7 @@ export function useGamemakerSession() {
   const navigate = useNavigate();
   const [session, setSession] = useState(null);
   useEffect(() => {
-    getSession().then((s) => (isGamemakerSession(s) ? setSession(s) : navigate('/gm/login', { replace: true })));
+    restoreSession().then((s) => (isGamemakerSession(s) ? setSession(s) : navigate('/gm/login', { replace: true })));
   }, [navigate]);
   return session;
 }
