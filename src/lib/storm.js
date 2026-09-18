@@ -15,49 +15,87 @@ import { coveringCircle, distanceM, pointInPolygon } from './geo';
 export function buildStormPlan(storm, playArea, seed = randomSeed()) {
   const random = mulberry32(seed);
   const first = coveringCircle(playArea);
-  const plan = [{ ...first, revealAt: 0, shrinkStart: 0, shrinkEnd: 0 }];
   const factor = clamp(storm.shrinkFactor ?? 0.6, 0.1, 0.95);
   const minR = Math.max(storm.minRadiusMeters ?? 30, 5);
   const manual = storm.circles ?? [];
   const useRandom = storm.random !== false;
-  // Optional gamemaker-chosen last circle. Random circles are kept around it so the storm converges there.
   const last = useRandom && storm.finalCircle
     ? { c: storm.finalCircle.center, r: Math.max(storm.finalCircle.radiusMeters ?? minR, 5) }
     : null;
 
+  // 1. Radii, largest first. Gamemaker-placed circles keep their own size.
+  const circles = [{ c: first.c, r: first.r }];
   const floor = last ? Math.max(last.r, minR) : minR;
-  let shrinkStart = (storm.firstShrinkAfterMinutes ?? 10) * 60;
-  for (let i = 0; plan[plan.length - 1].r > floor && i < 50; i++) {
+  for (let i = 0; circles[circles.length - 1].r > floor && circles.length < 50; i++) {
     const spec = manual[i];
-    if (!spec && !useRandom) break; // gamemaker-placed circles only
+    if (!spec && !useRandom) break;
+    const prevR = circles[circles.length - 1].r;
+    const r = Math.max(spec ? 10 : floor, Math.min(spec?.radiusMeters ?? prevR * factor, prevR));
+    if (last && !spec && r <= last.r * 1.05) break; // the chosen final circle takes this slot
+    circles.push({ c: spec?.center ?? null, r: Math.round(r), fixed: !!spec?.center });
+  }
+  if (last) circles.push({ c: last.c, r: Math.round(Math.min(last.r, circles[circles.length - 1].r)), fixed: true });
+
+  // 2. Centres, each inside the one before it. With a chosen final circle every circle must also
+  //    wrap that final circle (containment is what keeps the storm from jumping), so the centre is
+  //    drawn evenly from the whole region that satisfies both — not nudged toward the target.
+  for (let i = 1; i < circles.length; i++) {
+    if (circles[i].c) continue;
+    circles[i].c = centreInside(circles[i - 1], circles[i].r, playArea, random, last);
+  }
+  // Keep every circle inside the one before it, whichever way the centres were chosen.
+  for (let i = 1; i < circles.length; i++) circles[i].c = pullInside(circles[i - 1], circles[i]);
+
+  // 3. Timings.
+  const plan = [{ c: circles[0].c, r: circles[0].r, revealAt: 0, shrinkStart: 0, shrinkEnd: 0 }];
+  let shrinkStart = (storm.firstShrinkAfterMinutes ?? 10) * 60;
+  for (let i = 1; i < circles.length; i++) {
+    const shrinkSeconds = manual[i - 1]?.shrinkSeconds ?? storm.shrinkSeconds ?? 120;
     const prev = plan[plan.length - 1];
-    const r = Math.max(spec ? 10 : floor, Math.min(spec?.radiusMeters ?? prev.r * factor, prev.r));
-    if (last && !spec && r <= last.r * 1.05) break; // close enough; the final circle comes next
-    const c = spec?.center ?? randomCenterInside(prev, r, playArea, random, last);
-    const shrinkSeconds = spec?.shrinkSeconds ?? storm.shrinkSeconds ?? 120;
     plan.push({
-      c,
-      r: Math.round(r),
+      c: circles[i].c,
+      r: circles[i].r,
       revealAt: prev.shrinkEnd, // players see the next circle the moment the last one settles
       shrinkStart,
       shrinkEnd: shrinkStart + shrinkSeconds,
     });
-    shrinkStart += shrinkSeconds + (manual[i + 1]?.holdSeconds ?? storm.holdSeconds ?? 240);
-  }
-
-  if (last) {
-    const prev = plan[plan.length - 1];
-    const shrinkSeconds = storm.shrinkSeconds ?? 120;
-    plan.push({
-      c: last.c,
-      r: Math.round(Math.min(last.r, prev.r)),
-      revealAt: prev.shrinkEnd,
-      shrinkStart,
-      shrinkEnd: shrinkStart + shrinkSeconds,
-    });
+    shrinkStart += shrinkSeconds + (manual[i]?.holdSeconds ?? storm.holdSeconds ?? 240);
   }
   return plan;
 }
+
+/**
+ * A centre for a circle of radius r inside `outer`, drawn evenly from everywhere it could go.
+ * When `mustHold` is given (the gamemaker's final circle) the centre must also wrap that circle.
+ * Candidates in the play area win; otherwise any valid centre beats none.
+ */
+function centreInside(outer, r, playArea, random, mustHold) {
+  const slack = Math.max(outer.r - r, 0);
+  const holds = (c) => !mustHold || distanceM(c, mustHold.c) <= Math.max(r - mustHold.r, 0);
+  let valid = null;
+  for (let i = 0; i < 400; i++) {
+    const c = offset(outer.c, slack * Math.sqrt(random()), random() * 360 - 180);
+    if (!holds(c)) continue;
+    valid ??= c;
+    if (pointInPolygon(c, playArea)) return c;
+  }
+  if (valid) return valid;
+  // Nothing sampled worked (a final circle right at the edge): sit as close to it as allowed.
+  if (!mustHold) return outer.c;
+  const need = distanceM(outer.c, mustHold.c) - Math.max(r - mustHold.r, 0);
+  return need > 0 ? offset(outer.c, Math.min(need, slack), turf.bearing(outer.c, mustHold.c)) : outer.c;
+}
+
+/** Nudges a circle's centre until it is fully inside the previous circle. */
+function pullInside(outer, circle) {
+  const allowed = Math.max(outer.r - circle.r, 0);
+  const d = distanceM(outer.c, circle.c);
+  if (d <= allowed) return circle.c;
+  return offset(outer.c, allowed, turf.bearing(outer.c, circle.c));
+}
+
+const offset = (c, metres, bearing) =>
+  turf.destination(c, metres / 1000, bearing, { units: 'kilometers' }).geometry.coordinates;
 
 export const randomSeed = () => Math.floor(Math.random() * 2 ** 32);
 
@@ -70,29 +108,6 @@ function mulberry32(seed) {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 2 ** 32;
   };
-}
-
-/**
- * Picks the centre of the next circle: inside the previous one, preferably inside the play area, and
- * — when the gamemaker chose a final circle — still wrapped around that final circle.
- */
-function randomCenterInside(prev, r, playArea, random, last) {
-  const slack = Math.max(prev.r - r, 0);
-  const holdsLast = (c) => !last || distanceM(c, last.c) <= Math.max(r - last.r, 0);
-  let best = null;
-  for (let i = 0; i < 80; i++) {
-    const d = slack * Math.sqrt(random());
-    const c = turf.destination(prev.c, d / 1000, random() * 360 - 180, { units: 'kilometers' }).geometry.coordinates;
-    if (!holdsLast(c)) continue;
-    best ??= c;
-    if (pointInPolygon(c, playArea)) return c;
-  }
-  // Nothing random worked: step straight toward the final circle (or stay put).
-  if (!last) return best ?? prev.c;
-  const need = distanceM(prev.c, last.c) - Math.max(r - last.r, 0);
-  return best ?? (need > 0
-    ? turf.destination(prev.c, need / 1000, turf.bearing(prev.c, last.c), { units: 'kilometers' }).geometry.coordinates
-    : prev.c);
 }
 
 /** Storm state at time t (seconds since start). Mirrors private.storm_at in SQL. */

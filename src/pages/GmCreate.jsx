@@ -5,7 +5,7 @@ import GameMap from '../components/GameMap';
 import { ErrorText, Loading } from '../components/ui';
 import { useAction, useGamemakerSession } from '../lib/hooks';
 import { exportConfig, loadDefaultConfig, normalizeConfig } from '../lib/config';
-import { asBox, boxCoords, coveringCircle } from '../lib/geo';
+import { asBox, boxCoords, coveringCircle, distanceM, formatDistance } from '../lib/geo';
 import { newChest, PRIZE_TYPES } from '../lib/prizes';
 import { buildStormPlan, randomSeed } from '../lib/storm';
 import { rpc } from '../lib/supabaseClient';
@@ -310,6 +310,22 @@ function StormTab({ config, update, map, plan, onReroll }) {
               : null)} />
           {s.finalCircle && (
             <>
+              {(() => {
+                // Every circle has to wrap the final one, so a final circle far from the middle
+                // forces even the first circle to lean that way — and players will read it.
+                const r1 = plan[1]?.r ?? full.r;
+                const room = (r1 - s.finalCircle.radiusMeters) - (full.r - r1);
+                const out = distanceM(s.finalCircle.center, full.c);
+                return out > room ? (
+                  <p className="warn">
+                    This far out ({formatDistance(out)} from the middle), the early circles have to lean toward it
+                    and players will guess where the storm is going. Keep it within about {formatDistance(Math.max(room, 0))} of
+                    the middle to hide it, or accept the tell.
+                  </p>
+                ) : (
+                  <p className="muted small">Well hidden: the first circles can still go anywhere.</p>
+                );
+              })()}
               <div className="circle-row">
                 <span>Radius</span>
                 <input type="range" min={10} max={Math.round(full.r / 2)} value={s.finalCircle.radiusMeters}
