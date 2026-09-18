@@ -79,7 +79,7 @@ This file holds the defaults the gamemaker starts from when creating a game. Any
     ]
   },
   "chests": {
-    "claimRadiusMeters": 15,          // phone GPS is usually ±5–15 m
+    "claimRadiusMeters": 20,          // tap to open within this range; phone GPS is ±5–15 m
     "visibleToPlayers": true,
     "items": [{ "position": [lng, lat], "prize": { "type": "storm_shield", "label": "Shield", "seconds": 60 } }],
     "prizePool": [{ "type": "reveal_enemy", "label": "Spy", "seconds": 10, "weight": 3 }]

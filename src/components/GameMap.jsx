@@ -20,20 +20,21 @@ const EMPTY = { type: 'FeatureCollection', features: [] };
  *  me           { lng, lat } — draws the "head to safe zone" line when outside the target circle
  *  circles      [{ center, radius, color, label }] — extra outlines (used by the editor)
  *  onLoad(map)  access to the mapbox instance (editor markers)
- *  onPlayerClick(id)
+ *  onPlayerClick(id) / onChestClick(id)
  *  cooperativeGestures  two fingers to pan/zoom (for a map embedded in a scrolling page)
  *  hideLabels   hide player names and every place name on the map (for sharing a replay)
  */
-export default function GameMap({ playArea, storm, players, chests, me, circles, onLoad, onPlayerClick, className, fitKey, cooperativeGestures, hideLabels }) {
+export default function GameMap({ playArea, storm, players, chests, me, circles, onLoad, onPlayerClick, onChestClick, className, fitKey, cooperativeGestures, hideLabels }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const [ready, setReady] = useState(false);
-  const chestMarkers = useRef({});
   const clickRef = useRef(onPlayerClick);
+  const chestClickRef = useRef(onChestClick);
 
   useEffect(() => {
     clickRef.current = onPlayerClick;
-  }, [onPlayerClick]);
+    chestClickRef.current = onChestClick;
+  }, [onPlayerClick, onChestClick]);
 
   useEffect(() => {
     const map = new mapboxgl.Map({
@@ -54,7 +55,8 @@ export default function GameMap({ playArea, storm, players, chests, me, circles,
 
     map.on('load', () => {
       const add = (id) => map.addSource(id, { type: 'geojson', data: EMPTY });
-      ['play-area', 'storm', 'storm-preview', 'target', 'guide', 'players', 'circles'].forEach(add);
+      ['play-area', 'storm', 'storm-preview', 'target', 'guide', 'players', 'circles', 'chests'].forEach(add);
+      map.addImage('chest-icon', giftIcon(), { pixelRatio: 2 });
 
       map.addLayer({ id: 'storm-preview', type: 'fill', source: 'storm-preview', paint: { 'fill-color': '#a855f7', 'fill-opacity': 0.12 } });
       map.addLayer({ id: 'storm', type: 'fill', source: 'storm', paint: { 'fill-color': '#7c3aed', 'fill-opacity': 0.45 } });
@@ -63,6 +65,12 @@ export default function GameMap({ playArea, storm, players, chests, me, circles,
       map.addLayer({ id: 'target', type: 'line', source: 'target', paint: { 'line-color': '#111111', 'line-width': 3 } });
       map.addLayer({ id: 'circles', type: 'line', source: 'circles', paint: { 'line-color': ['get', 'color'], 'line-width': 2.5, 'line-dasharray': [3, 1.5] } });
       map.addLayer({ id: 'guide', type: 'line', source: 'guide', paint: { 'line-color': '#111111', 'line-width': 3, 'line-dasharray': [1, 1.5] } });
+      // Added before the player layers so gift boxes never cover a player dot or name.
+      map.addLayer({
+        id: 'chests', type: 'symbol', source: 'chests',
+        layout: { 'icon-image': 'chest-icon', 'icon-size': 0.55, 'icon-allow-overlap': true, 'icon-ignore-placement': true },
+        paint: { 'icon-opacity': ['case', ['get', 'claimed'], 0.35, 1] },
+      });
       map.addLayer({
         id: 'players-ring', type: 'circle', source: 'players',
         paint: {
@@ -87,6 +95,7 @@ export default function GameMap({ playArea, storm, players, chests, me, circles,
         paint: { 'text-color': '#111111', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 },
       });
       map.on('click', 'players', (e) => clickRef.current?.(e.features[0]?.properties.id));
+      map.on('click', 'chests', (e) => chestClickRef.current?.(e.features[0]?.properties.id));
       setReady(true);
       onLoad?.(map);
     });
@@ -117,7 +126,8 @@ export default function GameMap({ playArea, storm, players, chests, me, circles,
     if (!ready) return;
     const map = mapRef.current;
     for (const layer of map.getStyle().layers) {
-      if (layer.type === 'symbol') map.setLayoutProperty(layer.id, 'visibility', hideLabels ? 'none' : 'visible');
+      const hasText = layer.layout?.['text-field'] !== undefined || map.getLayoutProperty(layer.id, 'text-field') !== undefined;
+      if (layer.type === 'symbol' && hasText) map.setLayoutProperty(layer.id, 'visibility', hideLabels ? 'none' : 'visible');
     }
   }, [ready, hideLabels]);
 
@@ -154,28 +164,22 @@ export default function GameMap({ playArea, storm, players, chests, me, circles,
 
   useEffect(() => {
     if (!ready) return;
-    const map = mapRef.current;
-    const seen = new Set();
-    for (const chest of chests ?? []) {
-      seen.add(chest.id);
-      let marker = chestMarkers.current[chest.id];
-      if (!marker) {
-        const el = document.createElement('div');
-        el.className = 'chest-marker';
-        el.textContent = '🎁';
-        marker = new mapboxgl.Marker({ element: el }).setLngLat([chest.lng, chest.lat]).addTo(map);
-        chestMarkers.current[chest.id] = marker;
-      }
-      marker.setLngLat([chest.lng, chest.lat]);
-      marker.getElement().classList.toggle('claimed', !!chest.claimed);
-    }
-    for (const [id, marker] of Object.entries(chestMarkers.current)) {
-      if (!seen.has(id)) {
-        marker.remove();
-        delete chestMarkers.current[id];
-      }
-    }
+    mapRef.current.getSource('chests').setData(turf.featureCollection((chests ?? [])
+      .map((c) => turf.point([c.lng, c.lat], { id: c.id, claimed: !!c.claimed }))));
   }, [ready, chests]);
 
   return <div ref={containerRef} className={`game-map ${className ?? ''}`} />;
+}
+
+/** The gift box, drawn once to a canvas so it can live in the map's own layer stack. */
+function giftIcon(size = 64) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.font = `${size - 10}px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('🎁', size / 2, size / 2 + 2);
+  const { data } = ctx.getImageData(0, 0, size, size);
+  return { width: size, height: size, data };
 }

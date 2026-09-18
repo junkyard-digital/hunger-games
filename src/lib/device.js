@@ -94,15 +94,11 @@ export function useWakeLock(enabled) {
  * Watches GPS and sends the latest fix to the server every `intervalSec` (also acting as a heartbeat,
  * so standing still doesn't look like going dark).
  */
-export function useLocationReporter({ gameId, enabled, intervalSec = 3, onClaimed }) {
+export function useLocationReporter({ gameId, enabled, intervalSec = 3 }) {
   const [position, setPosition] = useState(null);
   const [error, setError] = useState(null);
   const [lastSent, setLastSent] = useState(null);
   const latest = useRef(null);
-  const claimedRef = useRef(onClaimed);
-  useEffect(() => {
-    claimedRef.current = onClaimed;
-  }, [onClaimed]);
   const hasGps = !!navigator.geolocation;
 
   useEffect(() => {
@@ -129,9 +125,8 @@ export function useLocationReporter({ gameId, enabled, intervalSec = 3, onClaime
       if (!fix || sending) return;
       sending = true;
       try {
-        const res = await rpc('report_location', { p_game: gameId, p_lng: fix.lng, p_lat: fix.lat, p_accuracy: fix.accuracy });
+        await rpc('report_location', { p_game: gameId, p_lng: fix.lng, p_lat: fix.lat, p_accuracy: fix.accuracy });
         setLastSent(Date.now());
-        if (res?.claimed?.length) claimedRef.current?.(res.claimed);
       } catch (e) {
         setError(`Couldn't send location: ${e.message}`);
       } finally {

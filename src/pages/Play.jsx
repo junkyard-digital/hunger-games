@@ -36,6 +36,7 @@ export default function Play() {
   const [showBag, setShowBag] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [localToasts, setLocalToasts] = useState([]);
+  const chestAction = useAction();
 
   const alive = me?.status === 'alive';
   // Dead players stop reporting: nothing left to track, and it saves their battery.
@@ -47,7 +48,7 @@ export default function Play() {
     navigator.vibrate?.([100, 50, 100, 50, 300]);
     setTimeout(() => setLocalToasts((prev) => prev.filter((t) => !toasts.includes(t))), 6000);
   }, []);
-  const location = useLocationReporter({ gameId, enabled: reporting, intervalSec, onClaimed });
+  const location = useLocationReporter({ gameId, enabled: reporting, intervalSec });
   const wake = useWakeLock(reporting);
 
   if (!loaded && !error) return <Loading />;
@@ -93,6 +94,20 @@ export default function Play() {
   const stormSince = myState?.storm_since ? new Date(myState.storm_since).getTime() : null;
   const stormLeft = stormSince ? deathSec - (nowMs - stormSince) / 1000 : deathSec;
   const bag = Object.values(inventory).filter((i) => i.player_id === me.id && !i.used_at);
+
+  // Chests open by walking close enough, so show how close the nearest one is.
+  const chestRadius = game.config.chests?.claimRadiusMeters ?? 15;
+  const nearestChest = myPos
+    ? chestList.filter((c) => !c.claimed)
+      .map((c) => ({ ...c, away: distanceM([c.lng, c.lat], [myPos.lng, myPos.lat]) }))
+      .sort((a, b) => a.away - b.away)[0]
+    : null;
+  const canOpenChest = alive && game.status === 'active' && nearestChest && nearestChest.away <= chestRadius;
+
+  const openChest = (chestId) => chestAction.run(async () => {
+    const prize = await rpc('claim_chest', { p_chest: chestId ?? nearestChest?.id });
+    onClaimed([prize]);
+  });
   const showAlive = game.config.rules?.showAliveCount !== false;
 
   return (
@@ -143,6 +158,7 @@ export default function Play() {
         <GameMap
           playArea={game.config.playArea} storm={game.status === 'active' ? storm : null} me={alive ? myPos : null}
           players={mapPlayers} chests={game.config.chests?.visibleToPlayers === false ? [] : chestList}
+          onChestClick={(id) => openChest(id)}
           cooperativeGestures
         />
       </div>
@@ -164,6 +180,18 @@ export default function Play() {
             {distToGoal > 0 && myPos && <Compass from={[myPos.lng, myPos.lat]} to={nearestPointOnCircle(goal.center, goal.radius, [myPos.lng, myPos.lat])} />}
           </div>
         )}
+
+        {alive && game.status === 'active' && nearestChest && nearestChest.away < 150 && (
+          <div className="goal-row">
+            {canOpenChest
+              ? <>A chest is right here ({formatDistance(nearestChest.away)})</>
+              : <>Nearest chest <strong>{formatDistance(nearestChest.away)}</strong> away — get within {chestRadius} m</>}
+            <button className="btn primary" disabled={!canOpenChest || chestAction.busy} onClick={() => openChest()}>
+              {chestAction.busy ? 'Opening…' : 'Open chest'}
+            </button>
+          </div>
+        )}
+        <ErrorText error={chestAction.error} />
 
         {teammates.length > 0 && (
           <div>

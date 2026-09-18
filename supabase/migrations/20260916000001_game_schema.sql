@@ -721,10 +721,6 @@ declare
   g public.games;
   pl public.players;
   ps public.player_state;
-  ch record;
-  prize jsonb;
-  claimed jsonb := '[]';
-  radius float8;
 begin
   select * into pl from public.players where game_id = p_game and user_id = auth.uid();
   if pl.id is null then raise exception 'Not in this game'; end if;
@@ -742,28 +738,56 @@ begin
     end if;
   end if;
 
-  if g.status <> 'active' or pl.status <> 'alive' then return jsonb_build_object('claimed', claimed); end if;
+  if g.status <> 'active' or pl.status <> 'alive' then return jsonb_build_object('claimed', '[]'::jsonb); end if;
 
   insert into public.location_history (game_id, player_id, lng, lat) values (g.id, pl.id, p_lng, p_lat);
-
-  -- Chests: first individual player within range wins.
-  radius := private.cfg_num(g, '{chests,claimRadiusMeters}', 15);
-  for ch in
-    update public.chests c set claimed_by = pl.id, claimed_at = now()
-     where c.game_id = g.id and c.claimed_by is null
-       and private.dist_m(p_lng, p_lat, c.lng, c.lat) <= radius
-    returning c.id
-  loop
-    select cp.prize into prize from public.chest_prizes cp where cp.chest_id = ch.id;
-    insert into public.inventory (game_id, player_id, prize, chest_id) values (g.id, pl.id, prize, ch.id);
-    perform private.log_event(g.id, 'chest', pl.name || ' opened a chest: ' || coalesce(prize ->> 'label', 'prize'),
-      'gm', pl.id, pl.team_id, jsonb_build_object('chest_id', ch.id, 'prize', prize));
-    perform private.log_event(g.id, 'chest_public', 'A chest has been opened', 'all', null, null, jsonb_build_object('chest_id', ch.id));
-    claimed := claimed || jsonb_build_array(prize);
-  end loop;
-
   perform private.evaluate_player(g, pl, ps);
-  return jsonb_build_object('claimed', claimed);
+  return jsonb_build_object('claimed', '[]'::jsonb);
+end $$;
+
+-- Opens a chest the player is standing next to. Returns the prize, or raises a readable error.
+create or replace function public.claim_chest(p_chest uuid) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  g public.games;
+  pl public.players;
+  ps public.player_state;
+  ch public.chests;
+  prize jsonb;
+  radius float8;
+  gap float8;
+begin
+  select * into ch from public.chests where id = p_chest;
+  if ch.id is null then raise exception 'Chest not found'; end if;
+  select * into g from public.games where id = ch.game_id;
+  select * into pl from public.players where game_id = g.id and user_id = auth.uid();
+  if pl.id is null then raise exception 'Not in this game'; end if;
+  if g.status <> 'active' then raise exception 'The game isn''t running'; end if;
+  if pl.status <> 'alive' then raise exception 'You''re out of the game'; end if;
+  if ch.claimed_by is not null then
+    raise exception '%', case when ch.claimed_by = pl.id then 'You already opened this one' else 'Someone else got there first' end;
+  end if;
+
+  select * into ps from public.player_state where player_id = pl.id;
+  if ps.lng is null then raise exception 'No location yet — give your phone a moment'; end if;
+
+  radius := private.cfg_num(g, '{chests,claimRadiusMeters}', 20);
+  gap := private.dist_m(ps.lng, ps.lat, ch.lng, ch.lat);
+  if gap > radius then
+    raise exception 'Too far away — get within % m (you are % m away)', round(radius), round(gap);
+  end if;
+
+  update public.chests set claimed_by = pl.id, claimed_at = now()
+  where id = ch.id and claimed_by is null
+  returning * into ch;
+  if ch.id is null then raise exception 'Someone else got there first'; end if;
+
+  select cp.prize into prize from public.chest_prizes cp where cp.chest_id = ch.id;
+  insert into public.inventory (game_id, player_id, prize, chest_id) values (g.id, pl.id, prize, ch.id);
+  perform private.log_event(g.id, 'chest', pl.name || ' opened a chest: ' || coalesce(prize ->> 'label', 'prize'),
+    'gm', pl.id, pl.team_id, jsonb_build_object('chest_id', ch.id, 'prize', prize));
+  perform private.log_event(g.id, 'chest_public', 'A chest has been opened', 'all', null, null, jsonb_build_object('chest_id', ch.id));
+  return prize;
 end $$;
 
 create or replace function public.use_item(p_item uuid, p_target uuid) returns void
@@ -867,7 +891,7 @@ revoke execute on all functions in schema public from public, anon;
 grant execute on function public.gm_claim_username, public.gm_create_game, public.gm_join_game, public.gm_upsert_team,
   public.gm_delete_team, public.gm_set_team, public.gm_set_player_status, public.gm_start_game, public.gm_end_game,
   public.gm_send_message, public.join_game, public.rejoin_game, public.spectate, public.server_now,
-  public.report_location, public.use_item, public.save_push_subscription to authenticated;
+  public.report_location, public.claim_chest, public.use_item, public.save_push_subscription to authenticated;
 
 revoke insert, update, delete on all tables in schema public from anon, authenticated;
 revoke all on public.push_subscriptions, public.player_secrets, public.chest_prizes from anon;

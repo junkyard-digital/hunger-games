@@ -35,7 +35,7 @@ export function normalizeConfig(raw) {
       ...raw.storm,
     },
     chests: {
-      claimRadiusMeters: 15,
+      claimRadiusMeters: 20,
       visibleToPlayers: true,
       items: [],
       prizePool: [],
