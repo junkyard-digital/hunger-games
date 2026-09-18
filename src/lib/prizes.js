@@ -1,4 +1,4 @@
-import { randomPointInPolygon } from './geo';
+import { randomPointInPolygon, spreadFrom } from './geo';
 
 /** Built-in prize types. Anything else is treated as "custom": the gamemaker is notified when it's used. */
 export const PRIZE_TYPES = {
@@ -24,9 +24,11 @@ function stripWeight({ weight: _weight, ...prize }) {
   return prize;
 }
 
-export function randomChests(count, playArea, pool) {
-  return Array.from({ length: count }, () => ({
-    position: randomPointInPolygon(playArea),
+/** One chest, placed clear of the ones already down so markers don't stack up. */
+export function newChest(position, playArea, pool, existing = []) {
+  const taken = existing.map((c) => c.position);
+  return {
+    position: spreadFrom(position ?? randomPointInPolygon(playArea), taken),
     prize: pool.length ? pickPrize(pool) : { type: 'custom', label: 'Mystery prize' },
-  }));
+  };
 }

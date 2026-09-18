@@ -6,7 +6,7 @@ import { ErrorText, Loading } from '../components/ui';
 import { useAction, useGamemakerSession } from '../lib/hooks';
 import { exportConfig, loadDefaultConfig, normalizeConfig } from '../lib/config';
 import { asBox, boxCoords, coveringCircle } from '../lib/geo';
-import { PRIZE_TYPES, randomChests } from '../lib/prizes';
+import { newChest, PRIZE_TYPES } from '../lib/prizes';
 import { buildStormPlan, randomSeed } from '../lib/storm';
 import { rpc } from '../lib/supabaseClient';
 
@@ -324,6 +324,8 @@ function CircleHandles({ map, circles, onChange }) {
 function ChestsTab({ config, update, map }) {
   const c = config.chests;
   const setPool = (pool) => update(['chests', 'prizePool'], pool);
+  const addChest = (position) => update(['chests', 'items'], [...c.items, newChest(position, config.playArea, c.prizePool, c.items)]);
+  const totalWeight = c.prizePool.reduce((sum, p) => sum + (Number(p.weight) || 0), 0);
 
   return (
     <>
@@ -331,50 +333,74 @@ function ChestsTab({ config, update, map }) {
       <p className="muted small">Phone GPS is usually off by 5–15 m, so under ~10 m can be frustrating.</p>
       <Toggle label="Players can see chests on the map" checked={c.visibleToPlayers} onChange={(v) => update(['chests', 'visibleToPlayers'], v)} />
 
-      <h3>Placement</h3>
-      <NumberField label="Number of chests" value={c.count} min={0} max={100} onChange={(v) => update(['chests', 'count'], v)} />
-      <div className="button-row">
-        <button className="btn" onClick={() => update(['chests', 'items'], randomChests(Number(c.count) || 0, config.playArea, c.prizePool))}>Place randomly</button>
+      <h3>Chests on the map ({c.items.length})</h3>
+      <div className="button-row center-row">
+        <button className="btn" onClick={() => addChest(null)}>+ Add one anywhere</button>
         <button className="btn" disabled={!map} onClick={() => {
           const { lng, lat } = map.getCenter();
-          update(['chests', 'items'], [...c.items, { position: [lng, lat], prize: randomChests(1, config.playArea, c.prizePool)[0].prize }]);
-        }}>+ At map center</button>
+          addChest([lng, lat]);
+        }}>+ Add one here</button>
       </div>
-      <p className="muted small">Drag the chest markers to move them. {c.items.length} placed.</p>
+      <p className="muted small">
+        Each tap adds one chest, its prize drawn from the pool below. Chests dropped on the same spot are spaced
+        about 25 m apart so you can see them. Drag a marker to move it.
+      </p>
+      {!c.items.length && <p className="muted small">No chests yet.</p>}
       <ul className="pick-list">
-        {c.items.map((item, i) => (
-          <li key={i} className="item-row">
-            <span>Chest {i + 1}</span>
-            <select className="grow" value={c.prizePool.findIndex((p) => p.label === item.prize?.label)}
-              onChange={(e) => {
-                const { weight: _w, ...prize } = c.prizePool[Number(e.target.value)];
-                update(['chests', 'items', i, 'prize'], prize);
-              }}>
-              {c.prizePool.map((p, j) => <option key={j} value={j}>{p.label}</option>)}
-              {c.prizePool.findIndex((p) => p.label === item.prize?.label) === -1 && <option value={-1}>{item.prize?.label ?? 'Prize'}</option>}
-            </select>
-            <button className="icon-btn" onClick={() => update(['chests', 'items'], c.items.filter((_, j) => j !== i))}>Remove</button>
-          </li>
-        ))}
+        {c.items.map((item, i) => {
+          const poolIndex = c.prizePool.findIndex((p) => p.label === item.prize?.label);
+          return (
+            <li key={i} className="item-row">
+              <span>Chest {i + 1}</span>
+              <select className="grow" value={poolIndex}
+                onChange={(e) => {
+                  const { weight: _w, ...prize } = c.prizePool[Number(e.target.value)];
+                  update(['chests', 'items', i, 'prize'], prize);
+                }}>
+                {c.prizePool.map((p, j) => <option key={j} value={j}>{p.label}</option>)}
+                {poolIndex === -1 && <option value={-1}>{item.prize?.label ?? 'Prize'}</option>}
+              </select>
+              <button className="btn small" disabled={!map} title="Show on the map"
+                onClick={() => map.flyTo({ center: item.position, zoom: 17 })}>Find</button>
+              <button className="btn small" onClick={() => update(['chests', 'items'], c.items.filter((_, j) => j !== i))}>Remove</button>
+            </li>
+          );
+        })}
       </ul>
 
       <h3>Prize pool</h3>
-      <p className="muted small">Random chests pick from this list. Higher weight = more common.</p>
-      {c.prizePool.map((p, i) => (
-        <div key={i} className="prize-edit">
-          <select value={p.type} onChange={(e) => setPool(c.prizePool.map((x, j) => (j === i ? { ...x, type: e.target.value } : x)))}>
-            {Object.entries(PRIZE_TYPES).map(([type, info]) => <option key={type} value={type}>{info.name}</option>)}
-          </select>
-          <input value={p.label} placeholder="Label shown to players" onChange={(e) => setPool(c.prizePool.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} />
-          <div className="button-row">
-            {PRIZE_TYPES[p.type]?.hasSeconds && (
-              <NumberField label="Seconds" value={p.seconds ?? 10} min={1} onChange={(v) => setPool(c.prizePool.map((x, j) => (j === i ? { ...x, seconds: v } : x)))} />
-            )}
-            <NumberField label="Weight" value={p.weight ?? 1} min={0} onChange={(v) => setPool(c.prizePool.map((x, j) => (j === i ? { ...x, weight: v } : x)))} />
-            <button className="icon-btn" onClick={() => setPool(c.prizePool.filter((_, j) => j !== i))}>Remove</button>
-          </div>
-        </div>
-      ))}
+      <p className="muted small">What a new chest can contain. Weight sets how often a prize comes up.</p>
+      {c.prizePool.map((p, i) => {
+        const set = (patch) => setPool(c.prizePool.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+        const chance = totalWeight > 0 ? Math.round(((Number(p.weight) || 0) / totalWeight) * 100) : 0;
+        return (
+          <fieldset key={i} className="prize">
+            <legend>{p.label || 'Untitled prize'} — {chance}% of chests</legend>
+            <label>Effect
+              <select value={p.type} onChange={(e) => set({ type: e.target.value })}>
+                {Object.entries(PRIZE_TYPES).map(([type, info]) => <option key={type} value={type}>{info.name}</option>)}
+              </select>
+            </label>
+            <label>Name players see
+              <input value={p.label} placeholder="e.g. Spy: see one enemy" onChange={(e) => set({ label: e.target.value })} />
+            </label>
+            <div className="prize-numbers">
+              {PRIZE_TYPES[p.type]?.hasSeconds && (
+                <label>Lasts
+                  <span className="input-suffix">
+                    <input type="number" inputMode="numeric" min={1} value={p.seconds ?? 10} onChange={(e) => set({ seconds: Number(e.target.value) })} />
+                    <span className="muted small">sec</span>
+                  </span>
+                </label>
+              )}
+              <label>Weight
+                <input type="number" inputMode="numeric" min={0} value={p.weight ?? 1} onChange={(e) => set({ weight: Number(e.target.value) })} />
+              </label>
+            </div>
+            <button className="btn small" onClick={() => setPool(c.prizePool.filter((_, j) => j !== i))}>Remove prize</button>
+          </fieldset>
+        );
+      })}
       <button className="btn block" onClick={() => setPool([...c.prizePool, { type: 'custom', label: 'New prize', weight: 1 }])}>+ Add prize</button>
     </>
   );

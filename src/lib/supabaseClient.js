@@ -30,7 +30,14 @@ export async function ensureAnonymousSession() {
   const session = await getSession();
   if (session) return session;
   const { data, error } = await supabase.auth.signInAnonymously();
-  if (error) throw new Error(error.message);
+  if (error) {
+    // The one Supabase setting this app can't work without.
+    if (error.code === 'anonymous_provider_disabled' || /anonymous/i.test(error.message)) {
+      throw new Error('This game server has anonymous sign-ins turned off, so players can\'t join. '
+        + 'A gamemaker needs to enable them in Supabase → Authentication → Sign In / Providers → Anonymous sign-ins.');
+    }
+    throw new Error(error.message);
+  }
   return data.session;
 }
 

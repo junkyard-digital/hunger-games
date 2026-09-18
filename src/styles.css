@@ -121,3 +121,15 @@ input[type='text'], input[type='password'], input[type='number'], textarea, sele
   color: #b00020; background: Canvas; border-top: 2px solid #b00020; text-align: center;
 }
 .error-close { font: inherit; }
+
+/* prize pool: one bordered block per prize, fields side by side when there's room */
+.prize { margin: 0 0 12px; padding: 8px 12px 12px; }
+.prize legend { padding: 0 4px; font-weight: 700; }
+.prize label { margin: 6px 0; }
+.prize-numbers { display: flex; flex-wrap: wrap; gap: 12px; }
+.prize-numbers label { flex: 1; min-width: 110px; margin: 6px 0; }
+.prize-numbers .input-suffix input { width: 100%; }
+@media (min-width: 560px) {
+  .prize { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; align-items: end; }
+  .prize legend, .prize-numbers, .prize > button { grid-column: 1 / -1; }
+}

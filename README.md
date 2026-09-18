@@ -30,7 +30,7 @@ A website can only read GPS **while it's open on screen**, on both iPhone and An
 ## Setup
 
 1. **Supabase project:** create one at [supabase.com](https://supabase.com).
-   - Authentication → Sign In / Providers → turn on **Allow anonymous sign-ins**.
+   - Authentication → Sign In / Providers → turn on **Allow anonymous sign-ins**. Players join without accounts, so without this every join fails with "Anonymous sign-ins are disabled".
    - Run the SQL files in `supabase/migrations/` in order, using the SQL editor or `supabase db push`.
    - Deploy the functions **without JWT verification**, since they check requests themselves:
      ```sh
@@ -79,7 +79,6 @@ This file holds the defaults the gamemaker starts from when creating a game. Any
     ]
   },
   "chests": {
-    "count": 6,
     "claimRadiusMeters": 15,          // phone GPS is usually ±5–15 m
     "visibleToPlayers": true,
     "items": [{ "position": [lng, lat], "prize": { "type": "storm_shield", "label": "Shield", "seconds": 60 } }],

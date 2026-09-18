@@ -35,7 +35,6 @@ export function normalizeConfig(raw) {
       ...raw.storm,
     },
     chests: {
-      count: 0,
       claimRadiusMeters: 15,
       visibleToPlayers: true,
       items: [],

@@ -73,3 +73,19 @@ export function formatClock(totalSeconds) {
   const s = Math.max(0, Math.ceil(totalSeconds));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
+
+/**
+ * Returns a point at least `minGapM` from every point in `taken`, walking outward in a spiral
+ * from where it was asked for. Keeps chests dropped at the same map centre from stacking up.
+ */
+export function spreadFrom(point, taken, minGapM = 25) {
+  const clear = (p) => taken.every((t) => distanceM(t, p) >= minGapM);
+  if (clear(point)) return point;
+  for (let i = 1; i <= 60; i++) {
+    const ring = 1 + Math.floor((i - 1) / 8);
+    const candidate = turf.destination(point, (minGapM * ring) / 1000, (i * 137.5) % 360, { units: 'kilometers' })
+      .geometry.coordinates;
+    if (clear(candidate)) return candidate;
+  }
+  return point;
+}
