@@ -97,10 +97,7 @@ export default function Replay() {
   return (
     <div className="dashboard">
       <header className="dash-header row-between">
-        <div>
-          <p className="muted small">Replay</p>
-          <h1>{state.game.name}</h1>
-        </div>
+        <h1>{state.game.name}</h1>
         <div className="hud-alive"><span className="alive-num">{view.alive}</span><span className="alive-label">ALIVE</span></div>
       </header>
       <div className="watch-body">
