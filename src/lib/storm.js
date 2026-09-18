@@ -20,23 +20,41 @@ export function buildStormPlan(storm, playArea, seed = randomSeed()) {
   const minR = Math.max(storm.minRadiusMeters ?? 30, 5);
   const manual = storm.circles ?? [];
   const useRandom = storm.random !== false;
+  // Optional gamemaker-chosen last circle. Random circles are kept around it so the storm converges there.
+  const last = useRandom && storm.finalCircle
+    ? { c: storm.finalCircle.center, r: Math.max(storm.finalCircle.radiusMeters ?? minR, 5) }
+    : null;
 
+  const floor = last ? Math.max(last.r, minR) : minR;
   let shrinkStart = (storm.firstShrinkAfterMinutes ?? 10) * 60;
-  for (let i = 0; plan[plan.length - 1].r > minR && i < 50; i++) {
+  for (let i = 0; plan[plan.length - 1].r > floor && i < 50; i++) {
     const spec = manual[i];
     if (!spec && !useRandom) break; // gamemaker-placed circles only
     const prev = plan[plan.length - 1];
-    const r = Math.max(spec ? 10 : minR, Math.min(spec?.radiusMeters ?? prev.r * factor, prev.r));
-    const c = spec?.center ?? randomCenterInside(prev, r, playArea, random);
+    const r = Math.max(spec ? 10 : floor, Math.min(spec?.radiusMeters ?? prev.r * factor, prev.r));
+    if (last && !spec && r <= last.r * 1.05) break; // close enough; the final circle comes next
+    const c = spec?.center ?? randomCenterInside(prev, r, playArea, random, last);
     const shrinkSeconds = spec?.shrinkSeconds ?? storm.shrinkSeconds ?? 120;
     plan.push({
       c,
       r: Math.round(r),
-      revealAt: Math.max(prev.shrinkEnd, shrinkStart - (storm.revealBeforeShrinkSeconds ?? 120)),
+      revealAt: prev.shrinkEnd, // players see the next circle the moment the last one settles
       shrinkStart,
       shrinkEnd: shrinkStart + shrinkSeconds,
     });
     shrinkStart += shrinkSeconds + (manual[i + 1]?.holdSeconds ?? storm.holdSeconds ?? 240);
+  }
+
+  if (last) {
+    const prev = plan[plan.length - 1];
+    const shrinkSeconds = storm.shrinkSeconds ?? 120;
+    plan.push({
+      c: last.c,
+      r: Math.round(Math.min(last.r, prev.r)),
+      revealAt: prev.shrinkEnd,
+      shrinkStart,
+      shrinkEnd: shrinkStart + shrinkSeconds,
+    });
   }
   return plan;
 }
@@ -54,16 +72,27 @@ function mulberry32(seed) {
   };
 }
 
-function randomCenterInside(prev, r, playArea, random) {
+/**
+ * Picks the centre of the next circle: inside the previous one, preferably inside the play area, and
+ * — when the gamemaker chose a final circle — still wrapped around that final circle.
+ */
+function randomCenterInside(prev, r, playArea, random, last) {
   const slack = Math.max(prev.r - r, 0);
-  let best = prev.c;
-  for (let i = 0; i < 60; i++) {
+  const holdsLast = (c) => !last || distanceM(c, last.c) <= Math.max(r - last.r, 0);
+  let best = null;
+  for (let i = 0; i < 80; i++) {
     const d = slack * Math.sqrt(random());
     const c = turf.destination(prev.c, d / 1000, random() * 360 - 180, { units: 'kilometers' }).geometry.coordinates;
-    best = c;
+    if (!holdsLast(c)) continue;
+    best ??= c;
     if (pointInPolygon(c, playArea)) return c;
   }
-  return best;
+  // Nothing random worked: step straight toward the final circle (or stay put).
+  if (!last) return best ?? prev.c;
+  const need = distanceM(prev.c, last.c) - Math.max(r - last.r, 0);
+  return best ?? (need > 0
+    ? turf.destination(prev.c, need / 1000, turf.bearing(prev.c, last.c), { units: 'kilometers' }).geometry.coordinates
+    : prev.c);
 }
 
 /** Storm state at time t (seconds since start). Mirrors private.storm_at in SQL. */

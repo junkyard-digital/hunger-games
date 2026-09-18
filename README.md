@@ -68,12 +68,12 @@ This file holds the defaults the gamemaker starts from when creating a game. Any
   },
   "storm": {
     "firstShrinkAfterMinutes": 10,
-    "revealBeforeShrinkSeconds": 120, // how early the next circle appears
     "holdSeconds": 240,               // pause between shrinks
     "shrinkSeconds": 120,
     "shrinkFactor": 0.6,              // each random circle's radius vs. the previous one
     "minRadiusMeters": 30,            // circles stop shrinking here; the gamemaker ends the game
     "random": true,                   // false = use only the circles below, last one is the final circle
+    "finalCircle": null,              // { "center": [lng, lat], "radiusMeters": 60 } — random circles converge here
     "circles": [                      // hand-placed circles, used first, in order
       { "center": [lng, lat], "radiusMeters": 500, "holdSeconds": 300, "shrinkSeconds": 90 }
     ]

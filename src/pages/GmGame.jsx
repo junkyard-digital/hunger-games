@@ -124,9 +124,11 @@ function PlayerSheet({ data, player, nowMs, onClose }) {
   const [message, setMessage] = useState('');
   const items = Object.values(inventory).filter((i) => i.player_id === player.id);
 
-  const setStatus = (status) => run(async () => {
-    const verb = { dead: 'Eliminate', removed: 'Remove', alive: 'Revive' }[status];
-    if (window.confirm(`${verb} ${player.name}?`)) await rpc('gm_set_player_status', { p_player: player.id, p_status: status });
+  const setStatus = (status, cause = null) => run(async () => {
+    const what = { dead: cause === 'offline' ? 'Mark out (offline)' : 'Mark shot', removed: 'Remove', alive: 'Revive' }[status];
+    if (window.confirm(`${what}: ${player.name}?`)) {
+      await rpc('gm_set_player_status', { p_player: player.id, p_status: status, p_cause: cause });
+    }
   });
 
   const loadCode = () => run(async () => {
@@ -137,7 +139,7 @@ function PlayerSheet({ data, player, nowMs, onClose }) {
   return (
     <Modal title={player.name} onClose={onClose}>
       <ul className="kv">
-        <li><span>Status</span><strong>{player.status}{player.death_cause ? ` (${player.death_cause})` : ''}</strong></li>
+        <li><span>Status</span><strong>{player.status === 'alive' ? 'alive' : DEATH_LABELS[player.death_cause] ?? player.status}</strong></li>
         <li><span>Team</span>
           <select value={player.team_id ?? ''} disabled={busy}
             onChange={(e) => run(() => rpc('gm_set_team', { p_player: player.id, p_team: e.target.value || null }))}>
@@ -151,7 +153,8 @@ function PlayerSheet({ data, player, nowMs, onClose }) {
         <li><span>Rejoin code</span>{rejoinCode ? <strong className="mono">{rejoinCode}</strong> : <button className="btn small" onClick={loadCode}>Show</button>}</li>
       </ul>
       <div className="button-row">
-        {player.status === 'alive' && <button className="btn danger" disabled={busy} onClick={() => setStatus('dead')}>Eliminate</button>}
+        {player.status === 'alive' && <button className="btn danger" disabled={busy} onClick={() => setStatus('dead', 'shot')}>Shot</button>}
+        {player.status === 'alive' && <button className="btn danger" disabled={busy} onClick={() => setStatus('dead', 'offline')}>Out (offline)</button>}
         {player.status !== 'alive' && <button className="btn" disabled={busy} onClick={() => setStatus('alive')}>Revive</button>}
         {player.status !== 'removed' && <button className="btn ghost" disabled={busy} onClick={() => setStatus('removed')}>Remove</button>}
       </div>
@@ -171,6 +174,13 @@ function PlayerSheet({ data, player, nowMs, onClose }) {
 }
 
 // ───────────── Teams (drag & drop) ─────────────
+
+const DEATH_LABELS = {
+  storm: 'out — storm',
+  shot: 'out — shot',
+  offline: 'out — offline',
+  gamemaker: 'out — gamemaker',
+};
 
 const TEAM_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#a855f7', '#f97316', '#14b8a6', '#ec4899'];
 
@@ -324,7 +334,9 @@ function PlayerList({ data }) {
               <span className="small">
                 {p.status !== 'alive' ? p.status : [s?.is_dark && 'dark', s?.storm_since && 'in storm', s?.out_of_bounds && 'out of bounds'].filter(Boolean).join(', ')}
               </span>
-              <span className={`small mono ${ago > 15 ? 'stale' : 'muted'}`}>{ago != null ? `${ago}s` : '–'}</span>
+              {p.status === 'alive'
+                ? <span className={`small mono ${ago > 15 ? 'stale' : 'muted'}`}>{ago != null ? `${ago}s` : '–'}</span>
+                : <span className="small muted">{p.death_cause === 'storm' ? 'storm' : p.death_cause === 'shot' ? 'shot' : p.death_cause === 'offline' ? 'offline' : ''}</span>}
             </li>
           );
         })}

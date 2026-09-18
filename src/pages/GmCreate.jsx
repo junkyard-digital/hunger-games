@@ -50,7 +50,15 @@ export default function GmCreate() {
         <GameMap playArea={config.playArea} onLoad={setMap} circles={circles}
           chests={tab === 'Chests' ? [] : config.chests.items.map((c, i) => ({ id: `c${i}`, lng: c.position[0], lat: c.position[1] }))} />
         {map && tab === 'Area' && <AreaHandles map={map} playArea={config.playArea} onChange={(pa) => update(['playArea'], pa)} />}
-        {map && tab === 'Storm' && <CircleHandles map={map} circles={config.storm.circles} onChange={(c) => update(['storm', 'circles'], c)} />}
+        {map && tab === 'Storm' && (
+          <>
+            <CircleHandles map={map} circles={config.storm.circles} onChange={(c) => update(['storm', 'circles'], c)} />
+            {config.storm.finalCircle && (
+              <FinalCircleHandle map={map} circle={config.storm.finalCircle}
+                onChange={(center) => update(['storm', 'finalCircle', 'center'], center)} />
+            )}
+          </>
+        )}
         {map && tab === 'Chests' && <ChestHandles map={map} items={config.chests.items} onChange={(items) => update(['chests', 'items'], items)} />}
       </div>
 
@@ -256,7 +264,6 @@ function StormTab({ config, update, map, plan, onReroll }) {
   return (
     <>
       <NumberField label="First shrink after" value={s.firstShrinkAfterMinutes} min={0} step={0.5} suffix="min" onChange={(v) => update(['storm', 'firstShrinkAfterMinutes'], v)} />
-      <NumberField label="Show next circle before shrink" value={s.revealBeforeShrinkSeconds} min={0} suffix="sec" onChange={(v) => update(['storm', 'revealBeforeShrinkSeconds'], v)} />
       <NumberField label="Wait between shrinks" value={s.holdSeconds} min={0} suffix="sec" onChange={(v) => update(['storm', 'holdSeconds'], v)} />
       <NumberField label="Shrink duration" value={s.shrinkSeconds} min={10} suffix="sec" onChange={(v) => update(['storm', 'shrinkSeconds'], v)} />
       <NumberField label="Each circle is" value={s.shrinkFactor} min={0.1} max={0.95} step={0.05} suffix="× previous" onChange={(v) => update(['storm', 'shrinkFactor'], v)} />
@@ -290,6 +297,33 @@ function StormTab({ config, update, map, plan, onReroll }) {
         <button className="btn" onClick={addCircle}>+ Circle at map center</button>
         <button className="btn ghost" onClick={onReroll} disabled={!random}>Re-roll random circles</button>
       </div>
+
+      {random && (
+        <>
+          <h3>Final circle</h3>
+          <Toggle label="Choose where the storm ends" hint={s.finalCircle
+            ? 'Random circles close in around it. Drag the F handle to move it.'
+            : 'Off: the last random circle lands wherever it lands.'}
+            checked={!!s.finalCircle}
+            onChange={(on) => update(['storm', 'finalCircle'], on
+              ? { center: map ? [map.getCenter().lng, map.getCenter().lat] : full.c, radiusMeters: s.minRadiusMeters }
+              : null)} />
+          {s.finalCircle && (
+            <>
+              <div className="circle-row">
+                <span>Radius</span>
+                <input type="range" min={10} max={Math.round(full.r / 2)} value={s.finalCircle.radiusMeters}
+                  onChange={(e) => update(['storm', 'finalCircle', 'radiusMeters'], Number(e.target.value))} />
+                <span className="small mono">{s.finalCircle.radiusMeters}m</span>
+              </div>
+              <button className="btn block" disabled={!map}
+                onClick={() => update(['storm', 'finalCircle', 'center'], [map.getCenter().lng, map.getCenter().lat])}>
+                Move it to the map center
+              </button>
+            </>
+          )}
+        </>
+      )}
     </>
   );
 }
@@ -314,6 +348,26 @@ function CircleHandles({ map, circles, onChange }) {
       return m;
     });
     return () => markers.forEach((m) => m.remove());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, key]);
+  return null;
+}
+
+function FinalCircleHandle({ map, circle, onChange }) {
+  const changeRef = useRef(onChange);
+  useEffect(() => {
+    changeRef.current = onChange;
+  }, [onChange]);
+
+  const key = circle.center.join(',');
+  useEffect(() => {
+    const marker = new mapboxgl.Marker({ element: handleEl('handle circle-handle', 'F'), draggable: true })
+      .setLngLat(circle.center).addTo(map);
+    marker.on('dragend', () => {
+      const { lng, lat } = marker.getLngLat();
+      changeRef.current([lng, lat]);
+    });
+    return () => marker.remove();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, key]);
   return null;

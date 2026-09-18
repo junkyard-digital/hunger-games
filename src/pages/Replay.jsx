@@ -25,6 +25,7 @@ export default function Replay() {
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(15);
+  const [hideLabels, setHideLabels] = useState(false);
   const last = useRef(null);
 
   useEffect(() => {
@@ -104,7 +105,7 @@ export default function Replay() {
       </header>
       <div className="watch-body">
         <div className="live-map">
-          <GameMap playArea={state.game.config.playArea} storm={view.storm} players={view.mapPlayers} />
+          <GameMap playArea={state.game.config.playArea} storm={view.storm} players={view.mapPlayers} hideLabels={hideLabels} />
         </div>
         <aside className="watch-feed"><EventFeed events={view.events} limit={30} hideTypes={['joined', 'chest_public']} /></aside>
       </div>
@@ -115,6 +116,10 @@ export default function Replay() {
         <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>
           {SPEEDS.map((s) => <option key={s} value={s}>{s}×</option>)}
         </select>
+        <label className="inline-check" title="Hides player names and every street and place name, for sharing">
+          <input type="checkbox" checked={hideLabels} onChange={(e) => setHideLabels(e.target.checked)} />
+          Hide names
+        </label>
       </footer>
     </div>
   );

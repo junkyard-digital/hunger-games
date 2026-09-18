@@ -24,13 +24,13 @@ export default function Play() {
   const storm = useStorm(game, nowMs);
 
   const [setupDone, setSetupDone] = useState(() => localStorage.getItem('hg:setup') === '1');
-  const [mapOpen, setMapOpen] = useState(false);
   const [showBag, setShowBag] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [localToasts, setLocalToasts] = useState([]);
 
   const alive = me?.status === 'alive';
-  const reporting = !!me && game?.status !== 'ended' && setupDone && me.status !== 'removed';
+  // Dead players stop reporting: nothing left to track, and it saves their battery.
+  const reporting = !!me && game?.status === 'active' && setupDone && me.status === 'alive';
   const intervalSec = game?.config?.rules?.locationIntervalSeconds ?? 3;
   const onClaimed = useCallback((prizes) => {
     const toasts = prizes.map((p, i) => ({ id: `chest-${Date.now()}-${i}`, kind: 'prize', title: 'Chest opened!', body: p?.label ?? 'You found a prize' }));
@@ -120,14 +120,12 @@ export default function Play() {
       )}
       {game.status === 'ended' && <div className="status-card"><h2>Game over</h2><p>Thanks for playing!</p></div>}
 
-      <div className={`map-wrap ${mapOpen ? 'expanded' : 'mini'}`} onClick={() => !mapOpen && setMapOpen(true)}>
+      <div className="map-wrap">
         <GameMap
           playArea={game.config.playArea} storm={game.status === 'active' ? storm : null} me={alive ? myPos : null}
-          players={mapPlayers} chests={game.config.chests?.visibleToPlayers === false ? [] : chestList} fitKey={mapOpen}
+          players={mapPlayers} chests={game.config.chests?.visibleToPlayers === false ? [] : chestList}
+          cooperativeGestures
         />
-        {mapOpen
-          ? <button className="map-close" onClick={(e) => { e.stopPropagation(); setMapOpen(false); }}>Close map</button>
-          : <span className="map-hint">Tap to enlarge</span>}
       </div>
 
       <section className="play-panel">

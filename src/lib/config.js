@@ -25,12 +25,12 @@ export function normalizeConfig(raw) {
     },
     storm: {
       firstShrinkAfterMinutes: 10,
-      revealBeforeShrinkSeconds: 120,
       holdSeconds: 240,
       shrinkSeconds: 120,
       shrinkFactor: 0.6,
       minRadiusMeters: 30,
       random: true,
+      finalCircle: null,
       circles: [],
       ...raw.storm,
     },

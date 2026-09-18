@@ -21,8 +21,10 @@ const EMPTY = { type: 'FeatureCollection', features: [] };
  *  circles      [{ center, radius, color, label }] — extra outlines (used by the editor)
  *  onLoad(map)  access to the mapbox instance (editor markers)
  *  onPlayerClick(id)
+ *  cooperativeGestures  two fingers to pan/zoom (for a map embedded in a scrolling page)
+ *  hideLabels   hide player names and every place name on the map (for sharing a replay)
  */
-export default function GameMap({ playArea, storm, players, chests, me, circles, onLoad, onPlayerClick, className, fitKey }) {
+export default function GameMap({ playArea, storm, players, chests, me, circles, onLoad, onPlayerClick, className, fitKey, cooperativeGestures, hideLabels }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const [ready, setReady] = useState(false);
@@ -41,6 +43,9 @@ export default function GameMap({ playArea, storm, players, chests, me, circles,
       zoom: 14,
       attributionControl: false,
       pitchWithRotate: false,
+      // On the player screen the map sits inside a scrolling page: one finger scrolls the page,
+      // two fingers pan and zoom the map.
+      cooperativeGestures,
     });
     map.addControl(new mapboxgl.AttributionControl({ compact: true }));
     map.touchZoomRotate.disableRotation();
@@ -106,6 +111,15 @@ export default function GameMap({ playArea, storm, players, chests, me, circles,
     if (!ready) return;
     mapRef.current.getSource('play-area').setData(playArea ? turf.polygon(playArea) : EMPTY);
   }, [ready, playArea]);
+
+  // Every text layer, both Mapbox's street and place names and our own player labels.
+  useEffect(() => {
+    if (!ready) return;
+    const map = mapRef.current;
+    for (const layer of map.getStyle().layers) {
+      if (layer.type === 'symbol') map.setLayoutProperty(layer.id, 'visibility', hideLabels ? 'none' : 'visible');
+    }
+  }, [ready, hideLabels]);
 
   useEffect(() => {
     if (!ready) return;
