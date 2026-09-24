@@ -32,10 +32,11 @@ export default function Replay() {
     (async () => {
       try {
         await ensureAnonymousSession();
-        const [{ data: game }, { data: teams }, { data: players }] = await Promise.all([
+        const [{ data: game }, { data: teams }, { data: players }, { data: chests }] = await Promise.all([
           supabase.from('games').select('*').eq('id', gameId).maybeSingle(),
           supabase.from('teams').select('*').eq('game_id', gameId),
           supabase.from('players').select('*').eq('game_id', gameId),
+          supabase.from('chests').select('id, lng, lat, claimed_at').eq('game_id', gameId),
         ]);
         if (!game?.started_at) throw new Error('Replay is available once the game has started (for gamemakers and spectators).');
         const [history, events] = await Promise.all([
@@ -46,7 +47,7 @@ export default function Replay() {
         const end = new Date(game.ended_at ?? Date.now()).getTime();
         const tracks = {};
         for (const h of history) (tracks[h.player_id] ??= []).push({ t: (new Date(h.recorded_at).getTime() - start) / 1000, lng: h.lng, lat: h.lat });
-        setState({ game, teams: Object.fromEntries(teams.map((x) => [x.id, x])), players, tracks, events, start, duration: (end - start) / 1000 });
+        setState({ game, teams: Object.fromEntries(teams.map((x) => [x.id, x])), players, chests: chests ?? [], tracks, events, start, duration: (end - start) / 1000 });
       } catch (e) {
         setError(e.message);
       }
@@ -88,7 +89,8 @@ export default function Replay() {
     });
     const events = state.events.filter((e) => new Date(e.created_at).getTime() <= at);
     const alive = state.players.filter((p) => p.status !== 'removed' && !(p.died_at && new Date(p.died_at).getTime() <= at)).length;
-    return { mapPlayers, storm: stormAt(state.game.storm, t), events, alive };
+    const mapChests = state.chests.filter((c) => !c.claimed_at || new Date(c.claimed_at).getTime() > at);
+    return { mapPlayers, mapChests, storm: stormAt(state.game.storm, t), events, alive };
   }, [state, t]);
 
   if (error) return <main className="page narrow"><ErrorText error={error} /><Link to="/">Home</Link></main>;
@@ -102,7 +104,7 @@ export default function Replay() {
       </header>
       <div className="watch-body">
         <div className="live-map">
-          <GameMap playArea={state.game.config.playArea} storm={view.storm} players={view.mapPlayers} hideLabels={hideLabels} />
+          <GameMap playArea={state.game.config.playArea} storm={view.storm} players={view.mapPlayers} chests={view.mapChests} hideLabels={hideLabels} />
         </div>
         <aside className="watch-feed"><EventFeed events={view.events} limit={30} hideTypes={['joined', 'chest_public']} /></aside>
       </div>
